@@ -66,7 +66,7 @@ body[data-sidebar-collapsed="true"] #content-area {
 #x0-sidebar-toggle {
   position: fixed;
   left: 17rem;
-  bottom: 5.5rem;
+  top: 6.80rem;
   z-index: 50;
   width: 1.75rem;
   height: 1.75rem;
@@ -80,7 +80,7 @@ body[data-sidebar-collapsed="true"] #content-area {
   -webkit-backdrop-filter: blur(12px);
   color: #9ca3af;
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.3;
   transition: opacity 0.2s ease,
               transform 0.15s ease,
               background 0.2s ease,
@@ -107,8 +107,7 @@ body[data-sidebar-collapsed="true"] #content-area {
     display: flex;
   }
 
-  /* Show button when hovering near it or when sidebar is hovered */
-  #sidebar:hover ~ #x0-sidebar-toggle,
+  /* Brighten on hover */
   #x0-sidebar-toggle:hover {
     opacity: 1 !important;
   }
@@ -161,4 +160,16 @@ html.lenis {
 
 .lenis.lenis-stopped {
   overflow: hidden;
+}
+
+/* ─── "On This Page" (Table of Contents) — Fade When Not Hovered ─── */
+#table-of-contents,
+#table-of-contents-content {
+  opacity: 0.25;
+  transition: opacity 0.4s ease;
+}
+
+#table-of-contents:hover,
+#table-of-contents-content:hover {
+  opacity: 1;
 }

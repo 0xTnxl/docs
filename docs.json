@@ -139,7 +139,7 @@
         },
         {
           "anchor": "Whitepaper",
-          "href": "https://github.com/x0-project/x0-01/blob/main/whitepaper.pdf",
+          "href": "/whitepaper.pdf",
           "icon": "file-lines"
         }
       ]
