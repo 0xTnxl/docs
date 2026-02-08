@@ -1,0 +1,198 @@
+---
+title: "Policy Management"
+description: "Configure and manage agent spending policies using the PolicyManager class."
+icon: "shield-halved"
+---
+
+## PolicyManager
+
+The `PolicyManager` class handles all agent policy operations — initialization, updates, spend tracking, whitelist construction, and policy presets.
+
+```typescript
+import { PolicyManager } from '@x0-protocol/sdk';
+
+const policyManager = new PolicyManager(connection);
+// or access via client:
+const policyManager = client.policy;
+```
+
+## PDA Derivation
+
+### `derivePolicyAddress(owner)`
+
+```typescript
+const policyPda = policyManager.derivePolicyAddress(ownerPubkey);
+```
+
+Seeds: `["agent_policy", owner.toBytes()]`
+
+## Fetching Policies
+
+### `fetchPolicy(policyAddress)`
+
+```typescript
+const policy = await policyManager.fetchPolicy(policyPda);
+```
+
+**Returns:** `AgentPolicyAccount | null`
+
+### `fetchPolicyByOwner(owner)`
+
+```typescript
+const policy = await policyManager.fetchPolicyByOwner(ownerPubkey);
+```
+
+## AgentPolicyAccount
+
+| Field | Type | Description |
+|---|---|---|
+| `owner` | `PublicKey` | Policy owner (human) |
+| `agentSigner` | `PublicKey` | Authorized agent key |
+| `dailyLimit` | `BN` | Rolling 24h spend limit |
+| `spendLimit` | `BN?` | Optional total spend limit |
+| `txLimit` | `BN?` | Optional per-transaction limit |
+| `maxSingleTransaction` | `BN` | Maximum single transaction amount |
+| `currentSpend` | `BN` | Current rolling spend |
+| `privacyLevel` | `number` | 0 = Public, 1 = Confidential |
+| `whitelistMode` | `number` | 0 = None, 1 = Merkle, 2 = Bloom, 3 = Domain |
+| `whitelistData` | `Uint8Array` | Encoded whitelist data |
+| `isActive` | `boolean` | Whether policy is active |
+| `requireDelegation` | `boolean` | Enforce delegation model |
+| `boundTokenAccount` | `PublicKey?` | Token account bound to this policy |
+| `rollingWindow` | `SpendingEntry[]` | Rolling spend window entries |
+| `lastUpdated` | `number` | Last policy update timestamp |
+| `bump` | `number` | PDA bump seed |
+
+## Building Instructions
+
+### `buildInitializePolicyInstruction(owner, agentSigner, config)`
+
+```typescript
+const { instruction, policyAddress } = await policyManager.buildInitializePolicyInstruction(
+  ownerPubkey,
+  agentPubkey,
+  {
+    dailyLimit: new BN(100_000_000),
+    whitelist: { mode: 0 },
+    privacy: { level: 0 },
+  }
+);
+```
+
+### `buildUpdatePolicyInstruction(owner, policyAddress, updates)`
+
+```typescript
+const ix = policyManager.buildUpdatePolicyInstruction(
+  ownerPubkey,
+  policyPda,
+  { dailyLimit: new BN(500_000_000) }
+);
+```
+
+### `buildUpdateAgentSignerInstruction(owner, policyAddress, newSigner)`
+
+Rotate the agent signing key.
+
+### `buildRevokeAgentAuthorityInstruction(owner, policyAddress)`
+
+Kill switch — disable the agent.
+
+### `buildSetPolicyActiveInstruction(owner, policyAddress, active)`
+
+Pause or resume the agent's policy.
+
+### `buildRecordBlinkInstruction(agent, policyAddress, treasury, amount, recipient, reason)`
+
+Record a Blink generation on-chain.
+
+## Spend Tracking
+
+### `getCurrentSpend(policyAddress)`
+
+```typescript
+const { currentSpend, remaining, oldestExpiry } = await policyManager.getCurrentSpend(policyPda);
+```
+
+### `getRemainingSpendCapacity(policy)`
+
+```typescript
+const remaining = policyManager.getRemainingSpendCapacity(policy);
+```
+
+### `wouldExceedSpendLimit(policy, amount)`
+
+```typescript
+if (policyManager.wouldExceedSpendLimit(policy, transferAmount)) {
+  // Generate Blink for human approval
+}
+```
+
+### `wouldExceedTxLimit(policy, amount)`
+
+Check if a single transaction exceeds the per-transaction limit.
+
+## Whitelist Construction
+
+### `buildMerkleWhitelist(addresses)`
+
+Build a Merkle tree root from a list of allowed addresses.
+
+```typescript
+const merkleRoot = policyManager.buildMerkleWhitelist([
+  new PublicKey('Addr1...'),
+  new PublicKey('Addr2...'),
+  new PublicKey('Addr3...'),
+]);
+
+// Use in policy config:
+const config = {
+  dailyLimit: new BN(100_000_000),
+  whitelist: { mode: 1, root: merkleRoot }, // 1 = Merkle
+  privacy: { level: 0 },
+};
+```
+
+### `buildBloomWhitelist(addresses, sizeBytes?, hashCount?)`
+
+Build a Bloom filter for probabilistic whitelist checking.
+
+```typescript
+const bloomBits = policyManager.buildBloomWhitelist(addresses, 4096, 7);
+```
+
+### `buildDomainWhitelist(domains)`
+
+Build a domain-prefix whitelist.
+
+```typescript
+const domainData = policyManager.buildDomainWhitelist([
+  'merchant',
+  'exchange',
+  'service_',
+]);
+```
+
+## Policy Presets
+
+Three built-in presets for common risk profiles:
+
+```typescript
+const conservative = policyManager.getConservativePreset();
+// { dailyLimit: 100 USDC, txLimit: 10 USDC }
+
+const moderate = policyManager.getModeratePreset();
+// { dailyLimit: 1,000 USDC, txLimit: 100 USDC }
+
+const permissive = policyManager.getPermissivePreset();
+// { dailyLimit: 10,000 USDC, txLimit: 1,000 USDC }
+```
+
+Use a preset as a starting point:
+
+```typescript
+const { policyAddress } = await client.initializePolicy(agentPubkey, {
+  ...policyManager.getModeratePreset(),
+  whitelist: { mode: 1, root: merkleRoot },
+  privacy: { level: 0 },
+});
+```

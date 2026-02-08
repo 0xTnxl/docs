@@ -1,0 +1,444 @@
+---
+title: "Types Reference"
+description: "Complete reference of all TypeScript interfaces, enums, and type aliases exported by the SDK."
+icon: "code"
+---
+
+## Enums
+
+### WhitelistMode
+
+```typescript
+enum WhitelistMode {
+  None = 0,
+  Merkle = 1,
+  Bloom = 2,
+  Domain = 3,
+}
+```
+
+### PrivacyLevel
+
+```typescript
+enum PrivacyLevel {
+  Public = 0,
+  Confidential = 1,
+}
+```
+
+### EscrowState
+
+```typescript
+enum EscrowState {
+  Created = 0,
+  Funded = 1,
+  Delivered = 2,
+  Disputed = 3,
+  Released = 4,
+  Refunded = 5,
+  Cancelled = 6,
+}
+```
+
+### X402ErrorCode
+
+```typescript
+enum X402ErrorCode {
+  PaymentRequired = 402,
+  PaymentMismatch = 409,
+  PaymentExpired = 410,
+  InsufficientFunds = "402.1",
+  LimitExceeded = "402.2",
+  NotWhitelisted = "402.3",
+}
+```
+
+### ProofType
+
+```typescript
+enum ProofType {
+  PubkeyValidity = 0,
+  Withdraw = 1,
+  ZeroBalance = 2,
+  Transfer = 3,
+}
+```
+
+### AdminActionType
+
+```typescript
+enum AdminActionType {
+  SetFeeRate = 0,
+  SetPaused = 1,
+  EmergencyWithdraw = 2,
+  TransferAdmin = 3,
+}
+```
+
+---
+
+## Whitelist Types
+
+### WhitelistData
+
+```typescript
+type WhitelistData = NoWhitelistData | MerkleWhitelistData | BloomWhitelistData | DomainWhitelistData;
+
+interface NoWhitelistData { mode: WhitelistMode.None }
+interface MerkleWhitelistData { mode: WhitelistMode.Merkle; root: Uint8Array }
+interface BloomWhitelistData { mode: WhitelistMode.Bloom; bits: Uint8Array; hashCount: number }
+interface DomainWhitelistData { mode: WhitelistMode.Domain; allowedPrefixes: Uint8Array[] }
+```
+
+### MerkleProof
+
+```typescript
+interface MerkleProof { path: Uint8Array[] }
+```
+
+---
+
+## Privacy Types
+
+### PrivacyConfig
+
+```typescript
+type PrivacyConfig = PublicPrivacy | ConfidentialPrivacy;
+
+interface PublicPrivacy { level: PrivacyLevel.Public }
+interface ConfidentialPrivacy { level: PrivacyLevel.Confidential; auditor?: PublicKey }
+```
+
+---
+
+## Policy Types
+
+### AgentPolicyConfig
+
+Configuration for creating or updating a policy.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `owner` | `PublicKey` | optional | Policy owner |
+| `agentSigner` | `PublicKey` | optional | Agent's signing key |
+| `dailyLimit` | `BN` | yes | Rolling 24h spend limit |
+| `spendLimit` | `BN` | no | Total spend limit |
+| `txLimit` | `BN` | no | Per-transaction limit |
+| `whitelist` | `WhitelistData` | yes | Whitelist configuration |
+| `privacy` | `PrivacyConfig` | yes | Privacy configuration |
+| `privacyLevel` | `number` | no | Direct privacy level |
+| `whitelistMode` | `number` | no | Direct whitelist mode |
+| `whitelistData` | `Uint8Array` | no | Direct whitelist data |
+| `auditorKey` | `PublicKey` | no | Auditor for confidential mode |
+
+### AgentPolicyAccount
+
+On-chain policy account state.
+
+| Field | Type | Description |
+|---|---|---|
+| `owner` | `PublicKey` | Policy owner |
+| `agentSigner` | `PublicKey` | Authorized agent key |
+| `dailyLimit` | `BN` | Rolling 24h limit |
+| `spendLimit` | `BN?` | Total spend limit |
+| `txLimit` | `BN?` | Per-tx limit |
+| `maxSingleTransaction` | `BN` | Max single transaction |
+| `currentSpend` | `BN` | Current rolling spend |
+| `rollingSpend` | `BN?` | Rolling spend total |
+| `windowStart` | `number?` | Rolling window start |
+| `privacyLevel` | `number` | Privacy level |
+| `whitelistMode` | `number` | Whitelist mode |
+| `whitelistData` | `Uint8Array` | Whitelist data |
+| `isActive` | `boolean` | Policy active flag |
+| `requireDelegation` | `boolean` | Delegation required |
+| `boundTokenAccount` | `PublicKey?` | Bound token account |
+| `rollingWindow` | `SpendingEntry[]` | Spending entries |
+| `lastUpdated` | `number` | Last update timestamp |
+| `bump` | `number` | PDA bump |
+
+### SpendingEntry
+
+```typescript
+interface SpendingEntry {
+  amount: BN;
+  timestamp: number;
+}
+```
+
+### SpendingStats
+
+```typescript
+interface SpendingStats {
+  totalSpent24h: BN;
+  transactionCount: number;
+  remainingAllowance: BN;
+  oldestEntryExpiry: number;
+}
+```
+
+---
+
+## Escrow Types
+
+### CreateEscrowParams
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `buyer` | `PublicKey` | yes | Buyer's wallet |
+| `seller` | `PublicKey` | yes | Seller's wallet |
+| `arbiter` | `PublicKey` | no | Dispute arbiter |
+| `amount` | `BN` | yes | Escrow amount |
+| `memo` | `string` | yes | Service description |
+| `serviceMemo` | `string` | no | Service memo (hashed for PDA seed) |
+| `timeoutSeconds` | `number` | no | Custom timeout |
+| `deliveryTimeout` | `number` | no | Delivery timeout |
+| `mint` | `PublicKey` | yes | Token mint |
+
+### EscrowAccount
+
+See [Escrow SDK page](/sdk/escrow#escrowaccount) for full field listing.
+
+### EscrowParams
+
+```typescript
+interface EscrowParams {
+  useEscrow: boolean;
+  arbiter?: PublicKey;
+  autoReleaseDelay?: number;
+  deliveryTimeout?: number;
+}
+```
+
+---
+
+## Registry Types
+
+### Capability
+
+```typescript
+interface Capability {
+  type: string;
+  capType?: string;
+  metadata: string;
+}
+```
+
+### AgentRegistryEntry
+
+| Field | Type | Description |
+|---|---|---|
+| `agentId` | `PublicKey` | Agent's policy PDA |
+| `owner` | `PublicKey?` | Entry owner |
+| `endpoint` | `string` | Service endpoint URL |
+| `capabilities` | `Capability[]` | Agent capabilities |
+| `reputationPda` | `PublicKey` | Reputation PDA |
+| `lastUpdated` | `number` | Last update timestamp |
+| `isActive` | `boolean` | Active flag |
+
+### RegisterAgentParams
+
+| Field | Type | Required |
+|---|---|---|
+| `agentPolicyId` | `PublicKey` | yes |
+| `owner` | `PublicKey` | no |
+| `endpoint` | `string` | yes |
+| `capabilities` | `Capability[]` | yes |
+| `metadata` | `string` | no |
+| `metadataJson` | `string` | no |
+
+---
+
+## Reputation Types
+
+### AgentReputationAccount
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | `number` | Account version |
+| `agentId` | `PublicKey` | Agent's policy PDA |
+| `totalTransactions` | `BN` | Total transactions |
+| `successfulTransactions` | `BN` | Successful transactions |
+| `disputedTransactions` | `BN` | Disputed transactions |
+| `resolvedInFavor` | `BN` | Resolved in agent's favor |
+| `failedTransactions` | `BN` | Failed transactions |
+| `averageResponseTimeMs` | `number` | Average response time (ms) |
+| `lastUpdated` | `number` | Last update timestamp |
+| `lastActivityAt` | `number?` | Last activity timestamp |
+| `lastDecayAt` | `number?` | Last decay application |
+| `totalVolume` | `BN?` | Total transaction volume |
+| `cumulativeResponseTimeMs` | `BN?` | Cumulative response time |
+| `bump` | `number` | PDA bump |
+
+### ReputationScore
+
+```typescript
+interface ReputationScore {
+  score: number;        // 0-10000
+  isReliable: boolean;  // score >= 7000
+  components: {
+    successRate: number;
+    resolutionRate: number;
+    disputeRate: number;
+  };
+}
+```
+
+### ReputationSnapshot
+
+```typescript
+interface ReputationSnapshot {
+  timestamp: number;
+  score: number;
+  totalTransactions: BN;
+  successRate: number;
+}
+```
+
+---
+
+## x402 Types
+
+### X402PaymentRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `protocol` | `string` | `"x0-01"` |
+| `version` | `string` | `"2.0"` |
+| `mint` | `PublicKey` | Token mint |
+| `amount` | `BN` | Payment amount |
+| `recipient` | `PublicKey` | Service wallet |
+| `memoHash` | `Uint8Array` | Resource hash |
+| `network` | `string` | Network identifier |
+| `challenge` | `Uint8Array` | Unique nonce |
+| `expiresAt` | `number` | Expiration timestamp |
+| `escrow` | `EscrowParams?` | Optional escrow config |
+
+### X402Header
+
+```typescript
+interface X402Header {
+  raw: string;
+  request: X402PaymentRequest;
+}
+```
+
+### PaymentReceipt
+
+```typescript
+interface PaymentReceipt {
+  signature: string;
+  amount: BN;
+  recipient: PublicKey;
+  memoHash: Uint8Array;
+  blockTime: number;
+  slot: number;
+  usedEscrow: boolean;
+  escrowAddress?: PublicKey;
+}
+```
+
+---
+
+## Blink Types
+
+### Blink
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Unique Blink ID |
+| `type` | `string` | Blink type (`"transfer"`, `"escrow_release"`, `"policy_update"`) |
+| `title` | `string` | Display title |
+| `description` | `string` | Display description |
+| `icon` | `string` | Icon URL |
+| `label` | `string?` | Button label |
+| `disabled` | `boolean` | Whether action is disabled |
+| `actions` | `BlinkAction[]` | Available actions |
+| `links` | `object?` | Linked actions |
+| `metadata` | `BlinkMetadata` | Action-specific metadata |
+| `expiresAt` | `number` | Expiration timestamp |
+| `createdAt` | `number` | Creation timestamp |
+
+### BlinkAction
+
+```typescript
+interface BlinkAction {
+  label: string;
+  type: string;
+  href?: string;
+  parameters: BlinkParameter[];
+}
+```
+
+### BlinkParameter
+
+```typescript
+interface BlinkParameter {
+  name: string;
+  type: "text" | "number" | "signature" | "pubkey";
+  required: boolean;
+  description: string;
+  label?: string;
+}
+```
+
+---
+
+## Transaction Types
+
+### TransactionResult
+
+```typescript
+interface TransactionResult {
+  signature: string;
+  confirmed: boolean;
+  blockTime?: number;
+  slot: number;
+}
+```
+
+### SimulationResult
+
+```typescript
+interface SimulationResult {
+  success: boolean;
+  logs: string[];
+  unitsConsumed?: number;
+  error?: string;
+}
+```
+
+### PaymentOptions
+
+```typescript
+interface PaymentOptions {
+  skipPreflight?: boolean;
+  commitment?: Commitment;
+  maxRetries?: number;
+}
+```
+
+---
+
+## Confidential Types
+
+### ConfidentialAccountConfig
+
+```typescript
+interface ConfidentialAccountConfig {
+  elgamalPubkey: Uint8Array;
+  aeKey: Uint8Array;
+  maxPendingCredits?: number;
+}
+```
+
+### ConfidentialAccountState
+
+See [Confidential Transfers page](/sdk/confidential#getconfidentialaccountstatetokenaccount) for full field listing.
+
+---
+
+## Wrapper Types
+
+### WrapperConfig / WrapperStats / AdminAction
+
+See [Wrapper SDK page](/sdk/wrapper) for full field listings.

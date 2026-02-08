@@ -1,0 +1,151 @@
+---
+title: "Protocol Invariants"
+description: "Formal invariants that must hold across all x0 protocol operations."
+icon: "lock"
+---
+
+## Core Invariants
+
+These invariants are enforced on-chain and must hold at all times. Violation of any invariant halts the transaction.
+
+### 1. Spend Limit Invariant (x0-guard)
+
+$$
+\sum_{i \in W} a_i + a_{\text{new}} \leq L_{\text{daily}}
+$$
+
+Where:
+- $W$ is the set of spending entries within the rolling 24-hour window
+- $a_i$ is the amount of each spending entry
+- $a_{\text{new}}$ is the proposed transfer amount
+- $L_{\text{daily}}$ is the agent's configured daily limit
+
+**Enforcement:** Checked in the transfer hook before every transfer. Stale entries (older than 24 hours) are pruned before the check.
+
+### 2. Per-Transaction Limit Invariant
+
+$$
+a_{\text{new}} \leq L_{\text{tx}}
+$$
+
+Where $L_{\text{tx}}$ is the maximum single transaction amount (`maxSingleTransaction`).
+
+**Enforcement:** Checked in the guard before every transfer. Error: `SingleTransactionLimitExceeded` (0x1141).
+
+### 3. Reserve Invariant (x0-wrapper)
+
+$$
+R_{\text{USDC}} \geq S_{\text{x0\text{-}USD}}
+$$
+
+Where:
+- $R_{\text{USDC}}$ is the USDC balance held in the reserve account
+- $S_{\text{x0\text{-}USD}}$ is the total outstanding x0-USD supply
+
+**Enforcement:** Checked after every deposit and redemption. Error: `ReserveInvariantViolated` (0x1611).
+
+**Corollary:** The redemption fee ensures the reserve is always slightly overcollateralized:
+
+$$
+R_{\text{USDC}} \geq S_{\text{x0\text{-}USD}} \cdot \left(1 + \frac{f}{10000}\right)
+$$
+
+Where $f$ is the redemption fee in basis points.
+
+### 4. Delegation Invariant (x0-guard)
+
+$$
+\text{agent\_signer} \neq \text{owner}
+$$
+
+The agent and owner must be different keys. Error: `SelfDelegationNotAllowed` (0x111A).
+
+### 5. Bound Account Invariant (x0-guard)
+
+$$
+\text{source\_account.owner} = \text{policy.owner}
+$$
+
+The source token account must be owned by the policy owner. Error: `TokenAccountOwnerMismatch` (0x1119).
+
+### 6. Escrow State Machine Invariant
+
+The escrow state can only transition through valid paths:
+
+```
+Created → Funded → Delivered → Released
+                 → Disputed  → Released | Refunded
+       → Cancelled (only from Created)
+Funded → Refunded (via timeout)
+Delivered → Released (via auto-release timeout)
+```
+
+Any attempt to transition to an invalid state results in `InvalidEscrowState` (0x1109).
+
+### 7. Confidential Amount Bound
+
+$$
+0 \leq a \leq 2^{48} - 1
+$$
+
+All confidential transfer amounts must be representable in 48 bits. Error: `AmountExceedsConfidentialMax` (0x150F) or `AmountTooLarge` (0x1710).
+
+### 8. Proof Freshness Invariant
+
+$$
+t_{\text{now}} - t_{\text{verified}} \leq 300 \text{ seconds}
+$$
+
+ZK proof contexts expire after 5 minutes. Stale proofs cannot be used for transfers. Error: `ProofExpired` (0x1704).
+
+### 9. Fee Bounds Invariant (x0-wrapper)
+
+$$
+10 \leq f_{\text{bps}} \leq 500
+$$
+
+The wrapper redemption fee must stay within governance-defined bounds (0.1% to 5.0%). Errors: `FeeRateTooLow` (0x1625) or `FeeRateTooHigh` (0x1624).
+
+### 10. Timelock Invariant (x0-wrapper)
+
+$$
+t_{\text{execute}} \geq t_{\text{scheduled}} + 172{,}800
+$$
+
+Admin actions cannot be executed before the 48-hour timelock expires. Error: `TimelockNotExpired` (0x1643). Exception: emergency pause bypasses the timelock.
+
+---
+
+## Derived Properties
+
+These properties follow from the core invariants:
+
+| Property | Follows From | Implication |
+|---|---|---|
+| **Maximum loss from compromised agent** | Invariant 1 | At most $L_{\text{daily}}$ can be spent in any 24-hour window |
+| **x0-USD is always redeemable** | Invariant 3 | Every x0-USD in circulation is backed by at least 1 USDC |
+| **Agent cannot self-authorize** | Invariant 4 | Agent always operates under owner's delegated authority |
+| **Proofs are non-replayable** | Invariant 8 | A proof context can only be used once within its 5-minute window |
+| **Governance changes are observable** | Invariant 10 | Community has 48 hours to react to any admin action |
+
+## Automated Checks
+
+The on-chain programs enforce these invariants automatically. The SDK also provides client-side helper functions for pre-flight validation:
+
+```typescript
+import { PolicyManager, WrapperClient } from '@x0-protocol/sdk';
+
+// Check spend limit before submitting
+const policy = await client.getMyPolicy();
+if (client.policy.wouldExceedSpendLimit(policy, transferAmount)) {
+  console.log('Transfer would exceed daily limit');
+}
+
+// Check reserve health
+const wrapper = new WrapperClient(connection);
+const stats = await wrapper.fetchStats();
+const healthy = wrapper.isReserveHealthy(
+  stats.reserveUsdcBalance,
+  stats.outstandingWrapperSupply
+);
+```

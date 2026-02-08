@@ -1,0 +1,103 @@
+---
+title: "x0-token"
+description: "Token-2022 mint management with TransferFee, TransferHook, and ConfidentialTransfer extensions."
+icon: "coins"
+---
+
+**Program ID:** `EHHTCSyGkmnsBhGsvCmLzKgcSxtsN31ScrfiwcCbjHci`
+
+x0-token manages the Token-2022 mint that underpins all protocol transfers. It configures three key extensions:
+
+- **TransferFee** — 0.8% protocol fee on every transfer, withheld automatically
+- **TransferHook** — Routes every transfer through x0-guard for policy validation
+- **ConfidentialTransfer** *(optional)* — Enables Twisted ElGamal encrypted balances
+
+## Instructions
+
+### `initialize_mint`
+
+Creates a new Token-2022 mint with all required extensions.
+
+```rust
+initialize_mint(decimals: u8, enable_confidential: bool)
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `decimals` | `u8` | Token decimals (typically 6 for USDC-pegged) |
+| `enable_confidential` | `bool` | Whether to enable ConfidentialTransfer extension |
+
+The mint is initialized with:
+- `TransferFeeConfig` — `PROTOCOL_FEE_BASIS_POINTS = 80` (0.8%), max fee of `u64::MAX`
+- `TransferHook` — Points to x0-guard program
+- `ConfidentialTransferMint` *(if enabled)* — Auto-approve new accounts
+
+### `configure_confidential_transfers`
+
+Configures the ConfidentialTransfer extension on an existing mint.
+
+```rust
+configure_confidential_transfers(auto_approve_new_accounts: bool)
+```
+
+### `deposit_confidential`
+
+Moves tokens from a public balance to the encrypted confidential balance.
+
+```rust
+deposit_confidential(amount: u64, decimals: u8)
+```
+
+After deposit, the amount is encrypted under the account's ElGamal public key and added to the pending balance. Call `apply_pending_balance` to make it available for confidential transfers.
+
+### `mint_tokens`
+
+Mints new tokens to a destination account. Restricted to the mint authority.
+
+```rust
+mint_tokens(amount: u64)
+```
+
+### `harvest_fees`
+
+Collects withheld transfer fees from token accounts into the mint's fee accumulator.
+
+### `withdraw_fees`
+
+Withdraws accumulated fees from the mint to the protocol treasury.
+
+## Token-2022 Extensions
+
+### TransferFee
+
+Every transfer automatically withholds 0.8% (80 basis points) as a protocol fee. The fee is:
+- Calculated at the Token-2022 runtime level (not in program code)
+- Withheld in the destination account until harvested
+- Subject to a minimum of `MIN_PROTOCOL_FEE = 1` micro-unit
+
+```
+fee = max(amount * 80 / 10000, 1)
+recipient_receives = amount - fee
+```
+
+### TransferHook
+
+The Token-2022 TransferHook extension calls x0-guard's `validate_transfer` on every `TransferChecked` instruction. This is enforced at the runtime level — there is no way to transfer tokens without passing through the guard.
+
+The hook requires extra account metas to be initialized via `initialize_extra_account_metas`, which sets up the PDA resolution for the agent's policy account.
+
+### ConfidentialTransfer
+
+When enabled, token accounts can hold an encrypted balance alongside their public balance. The encryption uses **Twisted ElGamal** over the **Ristretto255** curve.
+
+Key properties:
+- **Amount limit:** Confidential amounts are capped at `2^48 - 1` for ZK proof efficiency
+- **Pending balance:** Incoming confidential transfers go to a pending balance that must be applied before spending
+- **Credit counter:** Maximum `65,536` pending credits before `apply_pending_balance` is required
+
+## Events Emitted
+
+| Event | When |
+|---|---|
+| `ConfidentialTransferExecuted` | Confidential transfer completed |
+| `AuditLog` | Auditor-accessible transfer log (when auditor is configured) |

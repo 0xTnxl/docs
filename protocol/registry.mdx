@@ -1,0 +1,117 @@
+---
+title: "x0-registry"
+description: "Agent discovery service with capability metadata, endpoint registration, and lifecycle management."
+icon: "magnifying-glass"
+---
+
+**Program ID:** `Bebty49EPhFoANKDw7TqLQ2bX61ackNav5iNkj36eVJo`
+
+x0-registry is the protocol's agent discovery layer. Agents register with an endpoint URL and a set of capabilities, making themselves discoverable to other agents and services.
+
+## Instructions
+
+### `register_agent`
+
+Registers a new agent in the discovery registry. Requires a listing fee of `REGISTRY_LISTING_FEE_LAMPORTS = 100,000,000` (0.1 SOL).
+
+```rust
+register_agent(endpoint: String, capabilities: Vec<Capability>)
+```
+
+| Parameter | Type | Constraints |
+|---|---|---|
+| `endpoint` | `String` | Max 256 bytes, must be a valid URL |
+| `capabilities` | `Vec<Capability>` | Max 10 capabilities per agent |
+
+### `update_registry`
+
+Updates the agent's endpoint and/or capabilities.
+
+```rust
+update_registry(
+    new_endpoint: Option<String>,
+    new_capabilities: Option<Vec<Capability>>
+)
+```
+
+### `deactivate_entry`
+
+Marks the agent as inactive. The registry entry remains on-chain but is excluded from discovery queries.
+
+### `reactivate_entry`
+
+Reactivates a previously deactivated entry.
+
+### `deregister_agent`
+
+Permanently removes the agent from the registry and closes the account, reclaiming rent.
+
+## State Account
+
+### AgentRegistry
+
+```rust
+pub struct AgentRegistry {
+    pub version: u8,
+    pub agent_id: Pubkey,
+    pub endpoint: String,                  // Service URL (max 256 bytes)
+    pub capabilities: Vec<Capability>,     // Up to 10 capabilities
+    pub price_oracle: Option<Pubkey>,      // Optional price feed
+    pub reputation_pda: Pubkey,            // Link to reputation account
+    pub last_updated: i64,
+    pub is_active: bool,
+    pub owner: Pubkey,
+    pub bump: u8,
+}
+```
+
+**PDA Seeds:** `["registry", agent_id]`
+
+### Capability
+
+Each capability describes a service the agent offers:
+
+```rust
+pub struct Capability {
+    pub capability_type: String,    // e.g., "text-generation", "image-analysis"
+    pub metadata: String,           // JSON metadata (max 256 bytes)
+}
+```
+
+The `metadata` field is a JSON string stored on-chain. It typically contains:
+
+```json
+{
+  "model": "gpt-4",
+  "price_per_request": 1000000,
+  "max_tokens": 4096,
+  "supported_formats": ["text", "json"]
+}
+```
+
+## Discovery
+
+Agents can be discovered by:
+
+1. **Iterating registry PDAs** — Use `getProgramAccounts` with filters on `capability_type`
+2. **SDK helper** — `X0Client.findAgents(capabilityType)` fetches and filters matching agents
+3. **Reputation check** — Each registry entry links to a reputation PDA for trust scoring
+
+### Registry Constants
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `REGISTRY_LISTING_FEE_LAMPORTS` | 100,000,000 (0.1 SOL) | Anti-spam listing fee |
+| `MAX_ENDPOINT_LENGTH` | 256 bytes | Maximum URL length |
+| `MAX_CAPABILITIES_PER_AGENT` | 10 | Max capabilities per registration |
+| `MAX_CAPABILITY_TYPE_LENGTH` | 64 bytes | Max capability type string |
+| `MAX_CAPABILITY_METADATA_LENGTH` | 256 bytes | Max metadata JSON per capability |
+| `REGISTRY_TTL_SECONDS` | 300 (5 min) | Client-side cache TTL |
+
+## Events Emitted
+
+| Event | When |
+|---|---|
+| `AgentRegistered` | New agent registered |
+| `RegistryUpdated` | Endpoint or capabilities changed |
+| `AgentDeregistered` | Agent removed from registry |

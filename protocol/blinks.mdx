@@ -1,0 +1,180 @@
+---
+title: "Solana Actions (Blinks)"
+description: "Human-in-the-loop approval workflows using Solana Actions (Blinks) for high-risk agent operations."
+icon: "link"
+---
+
+When an agent attempts an operation that exceeds its policy limits or requires explicit human approval, the x0-guard program generates a **Blink** — a Solana Action that the owner can approve from any Blink-compatible wallet or application.
+
+## When Blinks Are Triggered
+
+```
+Agent attempts transfer exceeding daily limit
+  │
+  ├── Guard validates: amount > remaining_allowance
+  │
+  ├── Guard checks: blinks_generated_this_hour < 3
+  │
+  ├── Guard emits: BlinkGenerated event
+  │
+  └── Agent returns Blink URL to caller
+        │
+        ├── Owner opens URL in Blink-compatible wallet
+        ├── Reviews details (amount, recipient, memo)
+        └── Signs + submits transaction
+```
+
+## Blink Types
+
+<Tabs>
+  <Tab title="Transfer Approval">
+    Generated when an agent transfer exceeds policy limits.
+
+    ```typescript
+    import { generateTransferBlink } from '@x0-protocol/sdk';
+
+    const blink = generateTransferBlink({
+      policyPda: agentPolicy,
+      agent: agentPubkey,
+      recipient: recipientPubkey,
+      amount: new BN(5_000_000_000), // 5,000 USDC
+      mint: usdcMint,
+      memo: 'Large infrastructure payment',
+    });
+    ```
+
+    **Fields:**
+    | Field | Description |
+    |---|---|
+    | `recipient` | Destination wallet address |
+    | `amount` | Transfer amount in micro-units |
+    | `mint` | Token mint to transfer |
+    | `memo` | Human-readable reason for transfer |
+  </Tab>
+
+  <Tab title="Escrow Release">
+    Generated when an escrow release requires owner confirmation.
+
+    ```typescript
+    import { generateEscrowReleaseBlink } from '@x0-protocol/sdk';
+
+    const blink = generateEscrowReleaseBlink({
+      escrowPda: escrowAccount,
+      buyer: buyerPubkey,
+      seller: sellerPubkey,
+      amount: new BN(10_000_000),
+      memo: 'Service delivered successfully',
+    });
+    ```
+  </Tab>
+
+  <Tab title="Policy Update">
+    Generated for governance-sensitive policy changes.
+
+    ```typescript
+    import { generatePolicyUpdateBlink } from '@x0-protocol/sdk';
+
+    const blink = generatePolicyUpdateBlink({
+      policyPda: agentPolicy,
+      changes: {
+        dailyLimit: new BN(500_000_000_000),
+        whitelistMode: 'merkle',
+      },
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Rate Limiting
+
+Blinks are rate-limited to prevent spam and denial-of-service:
+
+| Parameter | Value | Description |
+|---|---|---|
+| `MAX_BLINKS_PER_HOUR` | `3` | Maximum Blinks per agent per hour |
+| `BLINK_GENERATION_COST_LAMPORTS` | `1,000,000` | 0.001 SOL burned per Blink |
+| `BLINK_EXPIRY_SECONDS` | `900` | Blinks expire after 15 minutes |
+
+If the agent exceeds the Blink rate limit, the transfer is rejected with `BlinkRateLimitExceeded` (0x1130).
+
+## Blink Lifecycle
+
+<Steps>
+  <Step title="Generation">
+    The agent SDK creates a Blink object containing action details, encodes it as a Solana Actions URL, and optionally generates a QR code.
+  </Step>
+  <Step title="Delivery">
+    The Blink URL is surfaced to the owner via the agent's interface — push notification, chat message, email, or QR display.
+  </Step>
+  <Step title="Review">
+    The owner opens the Blink in any Solana Actions-compatible wallet (Phantom, Solflare, Dialect, etc.) and reviews the requested action.
+  </Step>
+  <Step title="Approval">
+    The owner signs the transaction in-wallet. The signed transaction is submitted directly to Solana — no intermediary.
+  </Step>
+  <Step title="Expiration">
+    If the owner does not act within 15 minutes, the Blink expires. The agent may generate a new one (subject to rate limits).
+  </Step>
+</Steps>
+
+## Solana Actions Metadata
+
+The SDK produces an Actions-compliant JSON metadata response for rendering in Blink clients:
+
+```typescript
+import { buildActionsMetadata } from '@x0-protocol/sdk';
+
+const metadata = buildActionsMetadata(blink);
+// Returns:
+// {
+//   icon: "https://x0.org/icon.png",
+//   title: "Approve Transfer",
+//   description: "Agent requests 5,000 USDC transfer to ...",
+//   label: "Approve",
+//   links: {
+//     actions: [
+//       { label: "Approve Transfer", href: "..." },
+//     ]
+//   }
+// }
+```
+
+## QR Code Generation
+
+For mobile-first approval flows:
+
+```typescript
+import { generateQRData } from '@x0-protocol/sdk';
+
+const qrPayload = generateQRData(blink, 'https://api.x0.org/actions');
+// Encode qrPayload into a QR code image
+```
+
+## Validation
+
+```typescript
+import { validateBlink, isBlinkExpiredFromBlink } from '@x0-protocol/sdk';
+
+if (!validateBlink(data)) {
+  throw new Error('Invalid blink structure');
+}
+
+if (isBlinkExpiredFromBlink(blink)) {
+  throw new Error('Blink has expired');
+}
+```
+
+## Events
+
+| Event | Fields | When |
+|---|---|---|
+| `BlinkGenerated` | `policy`, `agent`, `amount`, `recipient`, `expires_at`, `timestamp` | Blink created by guard |
+
+## Related Errors
+
+| Code | Name | Description |
+|---|---|---|
+| `0x1130` | `BlinkRateLimitExceeded` | Agent exceeded 3 Blinks/hour |
+| `0x1131` | `BlinkExpired` | Blink is past 15-minute window |
+| `0x1132` | `InvalidBlinkSignature` | Submitted signature doesn't match |
+| `0x1133` | `BlinkAlreadyProcessed` | Blink was already approved/rejected |

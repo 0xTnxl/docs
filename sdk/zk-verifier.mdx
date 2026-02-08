@@ -1,0 +1,148 @@
+---
+title: "ZK Verifier"
+description: "Verify zero-knowledge proofs on-chain using the ZkVerifierClient."
+icon: "fingerprint"
+---
+
+## ZkVerifierClient
+
+The `ZkVerifierClient` builds verification instructions for zero-knowledge proofs and queries on-chain proof contexts.
+
+```typescript
+import { ZkVerifierClient, ProofType } from '@x0-protocol/sdk';
+
+const zkVerifier = new ZkVerifierClient(connection);
+```
+
+## Proof Types
+
+| Value | Name | Description | Proof Size |
+|---|---|---|---|
+| `0` | `PubkeyValidity` | Proves an ElGamal public key is well-formed | 64 bytes |
+| `1` | `Withdraw` | Proves withdrawal amount is valid and balance remains non-negative | 160 bytes |
+| `2` | `ZeroBalance` | Proves a ciphertext encrypts zero | 96 bytes |
+| `3` | `Transfer` | Proves transfer amount is valid with range proof | 288 bytes |
+
+## Verification Instructions
+
+### `buildVerifyPubkeyValidityInstruction`
+
+```typescript
+const { instruction, proofContextPda } = zkVerifier.buildVerifyPubkeyValidityInstruction(
+  ownerPubkey,
+  tokenAccountPubkey,
+  mintPubkey,
+  proofData,         // Uint8Array (64 bytes)
+  elgamalPubkey,     // Uint8Array (32 bytes)
+  timestamp          // number
+);
+```
+
+### `buildVerifyWithdrawInstruction`
+
+```typescript
+const { instruction, proofContextPda } = zkVerifier.buildVerifyWithdrawInstruction(
+  ownerPubkey,
+  tokenAccountPubkey,
+  mintPubkey,
+  proofData,               // Uint8Array (160 bytes)
+  amount,                  // BN
+  newDecryptableBalance,   // Uint8Array (36 bytes)
+  timestamp
+);
+```
+
+### `buildVerifyZeroBalanceInstruction`
+
+```typescript
+const { instruction, proofContextPda } = zkVerifier.buildVerifyZeroBalanceInstruction(
+  ownerPubkey,
+  tokenAccountPubkey,
+  mintPubkey,
+  proofData,     // Uint8Array (96 bytes)
+  timestamp
+);
+```
+
+### `buildVerifyTransferInstruction`
+
+```typescript
+const { instruction, proofContextPda } = zkVerifier.buildVerifyTransferInstruction(
+  ownerPubkey,
+  tokenAccountPubkey,
+  mintPubkey,
+  proofData,     // Uint8Array (288 bytes)
+  amount,        // BN
+  recipientPubkey,
+  timestamp
+);
+```
+
+## Querying Proof Contexts
+
+### `fetchProofContext(proofContextAddress)`
+
+```typescript
+const ctx = await zkVerifier.fetchProofContext(proofContextPda);
+```
+
+**Returns:** `ProofContext | null`
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | `number` | Context version |
+| `proofType` | `ProofType` | Type of proof verified |
+| `verified` | `boolean` | Whether the proof passed |
+| `owner` | `PublicKey` | Account owner |
+| `verifiedAt` | `number` | Verification timestamp |
+| `amount` | `BN \| null` | Amount (for withdraw/transfer proofs) |
+| `recipient` | `PublicKey \| null` | Recipient (for transfer proofs) |
+| `elgamalPubkey` | `Uint8Array \| null` | Public key (for pubkey validity proofs) |
+| `mint` | `PublicKey` | Token mint |
+| `tokenAccount` | `PublicKey` | Token account |
+| `bump` | `number` | PDA bump |
+
+### `isProofFresh(proofContext)`
+
+Check if a proof context is still within the 5-minute freshness window:
+
+```typescript
+if (!zkVerifier.isProofFresh(ctx)) {
+  // Re-generate and verify proof
+}
+```
+
+## PDA Derivation
+
+### `deriveProofContextPda(owner, tokenAccount, timestamp)`
+
+```typescript
+const [pda, bump] = zkVerifier.deriveProofContextPda(
+  ownerPubkey,
+  tokenAccountPubkey,
+  timestamp
+);
+```
+
+## Usage with ConfidentialClient
+
+In typical usage, the `ConfidentialClient` handles proof generation and verification internally. Use `ZkVerifierClient` directly when you need:
+
+- Custom proof verification logic
+- Batch proof verification
+- Proof context inspection
+- Integration with other on-chain programs
+
+```typescript
+import { ConfidentialClient, ZkVerifierClient } from '@x0-protocol/sdk';
+
+// High-level (recommended)
+const confidential = new ConfidentialClient(connection, wallet);
+await confidential.withdraw(tokenAccount, mint, BigInt(1000), keypair);
+
+// Low-level (direct verification)
+const zkVerifier = new ZkVerifierClient(connection);
+const { instruction } = zkVerifier.buildVerifyWithdrawInstruction(
+  owner, tokenAccount, mint, proofData, amount, newBalance, timestamp
+);
+```

@@ -1,0 +1,190 @@
+---
+title: "Wrapper (x0-USD)"
+description: "Deposit USDC, mint x0-USD, redeem, and manage governance using the WrapperClient."
+icon: "rotate"
+---
+
+## WrapperClient
+
+The `WrapperClient` manages the x0-USD stablecoin wrapper — 1:1 USDC-backed with a governance timelock system.
+
+```typescript
+import { WrapperClient } from '@x0-protocol/sdk';
+
+const wrapper = new WrapperClient(connection);
+```
+
+## Core Operations
+
+### Deposit & Mint
+
+Deposit USDC into the reserve and mint equivalent x0-USD:
+
+```typescript
+const ix = wrapper.buildDepositAndMintInstruction(
+  userPubkey,
+  new BN(100_000_000), // 100 USDC
+  usdcMint,
+  usdcTokenProgram
+);
+```
+
+### Burn & Redeem
+
+Burn x0-USD and withdraw USDC (minus redemption fee):
+
+```typescript
+const ix = wrapper.buildBurnAndRedeemInstruction(
+  userPubkey,
+  new BN(50_000_000), // 50 x0-USD
+  usdcMint,
+  usdcTokenProgram
+);
+```
+
+### Fee Calculation
+
+```typescript
+const [fee, payout] = wrapper.calculateRedemptionFee(
+  new BN(100_000_000), // amount
+  80                    // fee in bps (0.8%)
+);
+// fee = 800_000, payout = 99_200_000
+```
+
+## PDA Derivation
+
+```typescript
+const [configPda] = wrapper.deriveConfigPda();
+const [statsPda] = wrapper.deriveStatsPda();
+const [reservePda] = wrapper.deriveReservePda(usdcMint);
+const [mintPda] = wrapper.deriveWrapperMintPda(usdcMint);
+const [mintAuthPda] = wrapper.deriveMintAuthorityPda(wrapperMint);
+const [actionPda] = wrapper.deriveAdminActionPda(nonce);
+```
+
+## Reserve Health
+
+```typescript
+const ratio = wrapper.calculateReserveRatio(reserveBalance, supply);
+// 10000 = 1.0x, 10100 = 1.01x
+
+const healthy = wrapper.isReserveHealthy(reserveBalance, supply);
+```
+
+## Governance (Timelock)
+
+All admin operations go through a 48-hour timelock. The flow is:
+
+<Steps>
+  <Step title="Schedule">
+    Schedule the action. A 48-hour countdown begins.
+  </Step>
+  <Step title="Wait">
+    The community can observe the pending action on-chain.
+  </Step>
+  <Step title="Execute or Cancel">
+    After 48 hours, the admin executes the action. Or cancels it at any time.
+  </Step>
+</Steps>
+
+### Fee Rate Changes
+
+```typescript
+// Schedule
+const scheduleIx = wrapper.buildScheduleFeeChangeInstruction(
+  adminPubkey,
+  new BN(Date.now()), // nonce
+  50                   // new fee: 0.5%
+);
+
+// Execute (after 48h)
+const executeIx = wrapper.buildExecuteFeeChangeInstruction(adminPubkey, actionPda);
+```
+
+### Pause/Unpause
+
+```typescript
+// Schedule pause
+const pauseIx = wrapper.buildSchedulePauseInstruction(adminPubkey, nonce, true);
+
+// Emergency pause (bypasses timelock)
+const emergencyIx = wrapper.buildEmergencyPauseInstruction(adminPubkey);
+```
+
+### Emergency Withdrawal
+
+```typescript
+// Schedule
+const scheduleIx = wrapper.buildScheduleEmergencyWithdrawInstruction(
+  adminPubkey,
+  nonce,
+  new BN(1_000_000_000), // amount
+  destinationPubkey
+);
+
+// Execute
+const executeIx = wrapper.buildExecuteEmergencyWithdrawInstruction(
+  adminPubkey, actionPda, usdcMint, destinationAta, usdcTokenProgram
+);
+```
+
+### Admin Transfer (2-Step)
+
+```typescript
+// Step 1: Initiate
+const initiateIx = wrapper.buildInitiateAdminTransferInstruction(adminPubkey, newAdminPubkey);
+
+// Step 2: Accept (new admin signs)
+const acceptIx = wrapper.buildAcceptAdminTransferInstruction(newAdminPubkey);
+```
+
+### Cancel
+
+```typescript
+const cancelIx = wrapper.buildCancelAdminActionInstruction(adminPubkey, actionPda);
+```
+
+## Querying State
+
+### `fetchConfig()`
+
+```typescript
+const config = await wrapper.fetchConfig();
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `admin` | `PublicKey` | Current admin (multisig) |
+| `pendingAdmin` | `PublicKey?` | Pending admin transfer |
+| `usdcMint` | `PublicKey` | USDC mint address |
+| `wrapperMint` | `PublicKey` | x0-USD mint address |
+| `reserveAccount` | `PublicKey` | Reserve token account |
+| `redemptionFeeBps` | `number` | Current redemption fee in bps |
+| `isPaused` | `boolean` | Whether operations are paused |
+
+### `fetchStats()`
+
+```typescript
+const stats = await wrapper.fetchStats();
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `reserveUsdcBalance` | `BN` | USDC in reserve |
+| `outstandingWrapperSupply` | `BN` | x0-USD in circulation |
+| `totalDeposits` | `BN` | Cumulative deposits |
+| `totalRedemptions` | `BN` | Cumulative redemptions |
+| `totalFeesCollected` | `BN` | Cumulative fees collected |
+| `dailyRedemptionVolume` | `BN` | Today's redemption volume |
+| `dailyRedemptionResetTimestamp` | `number` | When daily counter resets |
+| `lastUpdated` | `number` | Last update timestamp |
+
+## AdminActionType Enum
+
+| Value | Name |
+|---|---|
+| `0` | `SetFeeRate` |
+| `1` | `SetPaused` |
+| `2` | `EmergencyWithdraw` |
+| `3` | `TransferAdmin` |

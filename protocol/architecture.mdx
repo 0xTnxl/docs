@@ -1,0 +1,126 @@
+---
+title: "Architecture"
+description: "System architecture, program interactions, and design principles of the x0 protocol."
+icon: "sitemap"
+---
+
+## Design Principles
+
+x0 is built on four foundational principles:
+
+1. **Policy-First Security** — Every token transfer passes through a transfer hook that enforces agent-specific spending policies. No transfer can bypass the guard.
+2. **On-Chain Verifiability** — All state transitions (escrow, reputation, proof verification) happen on-chain with deterministic outcomes. Off-chain components only generate proofs.
+3. **Minimal Trust Surface** — Agents operate with delegated authority bounded by policy. Key compromise cannot exceed the configured daily limit.
+4. **Composability** — Each program is independently deployable and interacts via CPI (Cross-Program Invocation). Third-party programs can integrate with any layer.
+
+## Program Dependency Graph
+
+```
+┌─────────────┐    ┌─────────────┐
+│  USDC (SPL) │    │  Token-2022 │
+└──────┬──────┘    └──────┬──────┘
+       │                  │
+       ▼                  ▼
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌──────────────────┐
+│  x0-wrapper │───▶│  x0-token   │───▶│  x0-guard   │    │  x0-zk-verifier  │
+└─────────────┘    └──────┬──────┘    └──────┬──────┘    └──────────────────┘
+                          │                  │                     ▲
+                          │ CPI              │ CPI                 │ proofs
+                          ▼                  ▼                     │
+┌─────────────┐    ┌─────────────┐    ┌──────────────┐    ┌───────┴──────────┐
+│  x0-escrow  │───▶│ x0-registry │───▶│x0-reputation │    │  x0-zk-proofs    │
+└─────────────┘    └─────────────┘    └──────────────┘    │  (WASM, off-chain)│
+       │                  │                  │            └──────────────────┘
+       ▼                  ▼                  ▼
+    ┌──────────────────────────────────────────┐
+    │              x0-common                   │
+    │  (constants, errors, events, state)      │
+    └──────────────────────────────────────────┘
+```
+
+### Inter-Program Communication
+
+| Source | Target | Mechanism | Purpose |
+|---|---|---|---|
+| x0-token | x0-guard | Transfer Hook | Every transfer is validated against agent policy |
+| x0-token | x0-zk-verifier | CPI | Confidential transfer proof verification |
+| x0-escrow | x0-reputation | CPI | Record success/dispute/resolution outcomes |
+| x0-guard | x0-reputation | CPI | Record policy violation events |
+| x0-registry | x0-reputation | Read | Display reputation alongside agent listings |
+| x0-wrapper | x0-token | CPI | Mint/burn x0-USD tokens |
+| x0-zk-proofs | x0-zk-verifier | Off-chain → On-chain | Client generates proof, verifier validates on-chain |
+
+## Account Model
+
+All program state is stored in **Program Derived Addresses (PDAs)** — deterministic accounts derived from seed phrases. This ensures:
+
+- **No signing authority** — PDAs can only be written to by their owning program
+- **Deterministic addressing** — Any client can derive the same PDA given the seeds
+- **Composability** — Other programs can read PDA data without CPI
+
+### PDA Seed Patterns
+
+| Account | Seeds | Derivation |
+|---|---|---|
+| AgentPolicy | `["agent_policy", owner, agent_signer]` | One policy per owner-agent pair |
+| EscrowAccount | `["escrow", buyer, seller, memo_hash]` | Unique per transaction |
+| AgentRegistry | `["registry", agent_id]` | One entry per agent |
+| AgentReputation | `["reputation", agent_id]` | One score per agent |
+| WrapperConfig | `["wrapper_config"]` | Singleton |
+| WrapperStats | `["wrapper_stats"]` | Singleton |
+| AdminAction | `["admin_action", action_type]` | One pending action per type |
+| ProofContext | `["proof-context", owner, mint]` | One context per owner-mint pair |
+
+## Transaction Flow
+
+A typical agent-to-service payment traverses the following path:
+
+<Steps>
+  <Step title="Agent discovers service">
+    The agent queries **x0-registry** for services matching its needs, filtering by capability type and checking **x0-reputation** scores.
+  </Step>
+  <Step title="Service returns 402">
+    The service endpoint returns HTTP `402 Payment Required` with an `X-PAYMENT` header containing recipient, amount, and a challenge nonce.
+  </Step>
+  <Step title="Agent builds transfer">
+    The SDK constructs a Token-2022 `TransferChecked` instruction. The transfer hook account (x0-guard) is automatically included.
+  </Step>
+  <Step title="Guard validates policy">
+    The transfer hook fires, loading the agent's `AgentPolicy`. It checks: daily limit not exceeded, amount within rolling window budget, recipient passes whitelist, and privacy level matches.
+  </Step>
+  <Step title="Transfer executes">
+    If policy passes, the transfer completes. The protocol fee (0.8%) is withheld via Token-2022's TransferFee extension.
+  </Step>
+  <Step title="Agent presents proof">
+    The agent sends the transaction signature back to the service as payment proof. The service verifies the on-chain transaction settled.
+  </Step>
+  <Step title="Reputation updated">
+    The escrow or guard program records the outcome (success/failure) to **x0-reputation** via CPI.
+  </Step>
+</Steps>
+
+## On-Chain Costs
+
+| Account | Size (bytes) | Rent (SOL) |
+|---|---|---|
+| AgentPolicy (base) | ~120 | ~0.002 |
+| AgentPolicy (max, 144 entries + Bloom) | ~6,800 | ~0.048 |
+| EscrowAccount | ~280 | ~0.003 |
+| AgentRegistry | ~5,400 | ~0.038 |
+| AgentReputation | ~130 | ~0.002 |
+| WrapperConfig | ~237 | ~0.003 |
+| WrapperStats | ~137 | ~0.002 |
+| AdminAction | ~120 | ~0.002 |
+| ProofContext | ~248 | ~0.003 |
+
+## Compute Unit Budget
+
+| Operation | Estimated CU |
+|---|---|
+| Public transfer (hook validation) | ~3,400 |
+| Confidential transfer (hook + ZK) | ~50,300 |
+| Escrow creation | ~2,800 |
+| Policy update | ~1,500 |
+| Merkle proof verification | ~2,000 |
+| Bloom filter check | ~800 |
+| Domain prefix check | ~400 |

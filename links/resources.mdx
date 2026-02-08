@@ -1,0 +1,105 @@
+---
+title: "Resources"
+description: "External documentation, references, and academic papers relevant to the x0 protocol."
+icon: "book"
+---
+
+## Solana
+
+<CardGroup cols={2}>
+  <Card title="Solana Documentation" icon="book" href="https://solana.com/docs">
+    Official Solana developer documentation covering accounts, transactions, and programs.
+  </Card>
+  <Card title="Solana Cookbook" icon="utensils" href="https://solanacookbook.com">
+    Practical recipes and patterns for Solana development.
+  </Card>
+  <Card title="Solana Program Library" icon="cube" href="https://spl.solana.com">
+    SPL token programs, governance, and standard libraries.
+  </Card>
+  <Card title="Solana Explorer" icon="magnifying-glass" href="https://explorer.solana.com">
+    On-chain transaction and account explorer.
+  </Card>
+</CardGroup>
+
+## Token-2022
+
+<CardGroup cols={2}>
+  <Card title="Token-2022 Documentation" icon="coins" href="https://spl.solana.com/token-2022">
+    SPL Token-2022 program with extension architecture.
+  </Card>
+  <Card title="Transfer Hook Guide" icon="hook" href="https://solana.com/developers/guides/token-extensions/transfer-hook">
+    How to implement transfer hooks for custom validation logic.
+  </Card>
+  <Card title="Transfer Fee Extension" icon="percent" href="https://solana.com/developers/guides/token-extensions/transfer-fee">
+    Automatic fee collection on every token transfer.
+  </Card>
+  <Card title="Confidential Transfers" icon="eye-slash" href="https://solana.com/developers/guides/token-extensions/confidential-transfer">
+    ElGamal-encrypted token balances and transfers.
+  </Card>
+</CardGroup>
+
+## Anchor Framework
+
+<CardGroup cols={2}>
+  <Card title="Anchor Documentation" icon="anchor" href="https://www.anchor-lang.com">
+    Solana's Anchor framework for building on-chain programs.
+  </Card>
+  <Card title="Anchor Book" icon="book-open" href="https://book.anchor-lang.com">
+    Comprehensive guide to Anchor program development.
+  </Card>
+</CardGroup>
+
+## Cryptography
+
+### Zero-Knowledge Proofs
+
+| Resource | Description |
+|---|---|
+| [Groth16 Paper](https://eprint.iacr.org/2016/260) | Jens Groth, "On the Size of Pairing-Based Non-interactive Arguments" (EUROCRYPT 2016) — the proof system used in x0-zk-proofs |
+| [ZK Proof Standards](https://zkproof.org) | Community standards for zero-knowledge proofs |
+
+### ElGamal Encryption
+
+| Resource | Description |
+|---|---|
+| [Ristretto Group](https://ristretto.group) | The Ristretto group used for ElGamal encryption in Token-2022 confidential transfers |
+| [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) | Rust implementation of elliptic curve operations used by solana-zk-sdk |
+| [solana-zk-sdk](https://docs.rs/solana-zk-sdk/latest/solana_zk_sdk/) | Solana's ZK proof SDK for confidential transfers |
+
+### Merkle Trees & Bloom Filters
+
+| Resource | Description |
+|---|---|
+| [Merkle Tree (Wikipedia)](https://en.wikipedia.org/wiki/Merkle_tree) | Hash tree structure used for efficient whitelist verification |
+| [Bloom Filter (Wikipedia)](https://en.wikipedia.org/wiki/Bloom_filter) | Probabilistic data structure used for space-efficient whitelist checking |
+
+## Solana Actions (Blinks)
+
+<CardGroup cols={2}>
+  <Card title="Solana Actions Specification" icon="link" href="https://solana.com/docs/advanced/actions">
+    Official specification for Solana Actions (Blinks).
+  </Card>
+  <Card title="Dialect Blinks" icon="comment" href="https://dialect.to">
+    Blink client and tooling for Solana Actions.
+  </Card>
+</CardGroup>
+
+## x0 Protocol
+
+<CardGroup cols={2}>
+  <Card title="GitHub Repository" icon="github" href="https://github.com/x0-01/x0-01">
+    Full source code — on-chain programs, SDK, and documentation.
+  </Card>
+  <Card title="Whitepaper (PDF)" icon="file-pdf" href="https://github.com/x0-01/x0-01/blob/main/whitepaper.pdf">
+    40-page technical specification covering architecture, cryptography, and economics.
+  </Card>
+</CardGroup>
+
+## Development Tools
+
+| Tool | Description |
+|---|---|
+| [Solana CLI](https://docs.solanalabs.com/cli/install) | Command-line tools for Solana development |
+| [Anchor CLI](https://www.anchor-lang.com/docs/installation) | Build, test, and deploy Anchor programs |
+| [wasm-pack](https://rustwasm.github.io/wasm-pack/) | Build Rust-to-WASM packages (used by x0-zk-proofs) |
+| [Solana Playground](https://beta.solpg.io) | Browser-based Solana IDE |

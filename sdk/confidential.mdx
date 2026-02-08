@@ -1,0 +1,200 @@
+---
+title: "Confidential Transfers"
+description: "Privacy-preserving token transfers using ElGamal encryption and zero-knowledge proofs."
+icon: "eye-slash"
+---
+
+## ConfidentialClient
+
+The `ConfidentialClient` wraps Token-2022's Confidential Transfer extension, providing account configuration, deposits, withdrawals, and balance management with encrypted balances.
+
+```typescript
+import { ConfidentialClient } from '@x0-protocol/sdk';
+
+const confidential = new ConfidentialClient(connection, wallet, confirmOptions);
+```
+
+## Account Configuration
+
+Before an account can send or receive confidential transfers, it must be configured with an ElGamal keypair:
+
+```typescript
+const signature = await confidential.configureAccount(
+  mintPubkey,
+  tokenAccountPubkey,
+  ownerKeypair,
+  65536 // maxPendingCredits (optional)
+);
+```
+
+This:
+1. Derives deterministic ElGamal and AES keys from the owner keypair + mint
+2. Generates a pubkey validity proof (via WASM)
+3. Submits the configuration transaction
+
+## Deposit
+
+Move tokens from the public balance into the confidential balance:
+
+```typescript
+const sig = await confidential.deposit(
+  tokenAccountPubkey,
+  mintPubkey,
+  BigInt(10_000_000) // 10 tokens
+);
+```
+
+## Apply Pending Balance
+
+Incoming confidential transfers accumulate in a pending balance. Apply them to the available balance:
+
+```typescript
+const sig = await confidential.applyPendingBalance(
+  tokenAccountPubkey,
+  ownerKeypair,
+  mintPubkey
+);
+```
+
+<Warning>
+After receiving `MAX_PENDING_BALANCE_CREDIT_COUNTER` (65,536) incoming transfers, you **must** apply the pending balance before receiving more.
+</Warning>
+
+## Withdraw
+
+Move tokens from the confidential balance back to the public balance:
+
+```typescript
+const sig = await confidential.withdraw(
+  tokenAccountPubkey,
+  mintPubkey,
+  BigInt(5_000_000), // 5 tokens
+  ownerKeypair
+);
+```
+
+## Balance Queries
+
+### `getConfidentialAccountState(tokenAccount)`
+
+```typescript
+const state = await confidential.getConfidentialAccountState(tokenAccountPubkey);
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `approved` | `boolean` | Account is approved for confidential transfers |
+| `elgamalPubkey` | `Uint8Array` | 32-byte ElGamal public key |
+| `pendingBalanceLo` | `bigint` | Low bits of pending balance |
+| `pendingBalanceHi` | `bigint` | High bits of pending balance |
+| `availableBalance` | `bigint` | Available confidential balance |
+| `decryptableAvailableBalance` | `Uint8Array` | AES-encrypted balance (owner decryptable) |
+| `allowConfidentialCredits` | `boolean` | Can receive confidential transfers |
+| `allowNonConfidentialCredits` | `boolean` | Can receive non-confidential transfers |
+| `pendingBalanceCreditCounter` | `bigint` | Incoming transfer counter |
+| `maximumPendingBalanceCreditCounter` | `bigint` | Max pending credits (65,536) |
+
+### `getDecryptableBalance(tokenAccount, ownerKeypair, mint)`
+
+Decrypt the current available confidential balance:
+
+```typescript
+const balance = await confidential.getDecryptableBalance(
+  tokenAccountPubkey,
+  ownerKeypair,
+  mintPubkey
+);
+console.log(`Confidential balance: ${balance}`);
+```
+
+## Credit Controls
+
+### `enableConfidentialCredits(tokenAccount)`
+
+Allow the account to receive confidential transfers.
+
+### `disableConfidentialCredits(tokenAccount)`
+
+Block incoming confidential transfers.
+
+### `enableNonConfidentialCredits(tokenAccount)`
+
+Allow the account to receive non-confidential (public) transfers.
+
+### `disableNonConfidentialCredits(tokenAccount)`
+
+Block incoming non-confidential transfers.
+
+---
+
+## Cryptographic Functions
+
+These standalone functions are also exported for advanced usage:
+
+### Key Derivation
+
+```typescript
+import { deriveAeKey, deriveElGamalKeypair } from '@x0-protocol/sdk';
+
+// Derive deterministic AES key
+const aeKey = deriveAeKey(ownerKeypair, mintPubkey);
+
+// Derive deterministic ElGamal keypair
+const { secretKey, publicKey } = deriveElGamalKeypair(ownerKeypair, mintPubkey);
+```
+
+Keys are derived deterministically from the owner keypair and mint address, so they can be re-derived without storage.
+
+### Encryption & Decryption
+
+```typescript
+import { encryptAmount, encryptZeroBalance, decryptBalance } from '@x0-protocol/sdk';
+
+// Encrypt a zero balance (for account initialization)
+const zeroCiphertext = encryptZeroBalance(aeKey);
+
+// Encrypt an amount
+const ciphertext = encryptAmount(BigInt(1_000_000), aeKey);
+
+// Decrypt a balance
+const amount = decryptBalance(ciphertext, aeKey);
+```
+
+### Proof Generation
+
+```typescript
+import {
+  generatePubkeyValidityProof,
+  generateWithdrawProof,
+  generateZeroBalanceProof,
+} from '@x0-protocol/sdk';
+
+// Pubkey validity proof (64 bytes)
+const proof = await generatePubkeyValidityProof(elgamalSecretKey, elgamalPubkey);
+
+// Withdraw proof
+const { proofData, newDecryptableBalance } = await generateWithdrawProof(
+  availableBalanceCiphertext,
+  BigInt(5_000_000),
+  elgamalSecretKey,
+  elgamalPubkey,
+  aeKey
+);
+
+// Zero-balance proof
+const zeroProof = await generateZeroBalanceProof(
+  availableBalanceCiphertext,
+  elgamalSecretKey,
+  elgamalPubkey
+);
+```
+
+## Amount Limits
+
+Confidential transfers are limited to amounts representable in 48 bits:
+
+$$
+\text{max\_amount} = 2^{48} - 1 = 281{,}474{,}976{,}710{,}655
+$$
+
+With 6 decimals, this is approximately 281 billion tokens — more than sufficient for any practical use.

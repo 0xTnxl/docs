@@ -1,0 +1,93 @@
+---
+title: "Audit Status"
+description: "Current audit status, known findings, and security checklist for the x0 protocol."
+icon: "clipboard-check"
+---
+
+## Audit Status
+
+<Warning>
+The x0 protocol has **not yet undergone a third-party security audit**. The protocol is currently on devnet and should not be used with real assets on mainnet until audited.
+</Warning>
+
+## Internal Security Review
+
+The codebase has been through an internal security review that identified and addressed findings across multiple severity levels. The following categories of findings have been resolved:
+
+### HIGH Severity — Resolved
+
+| ID | Finding | Resolution |
+|---|---|---|
+| HIGH-1 | Clock manipulation via `Clock::get()` | Added slot-based dual checks with buffers (`ROLLING_WINDOW_SLOTS`, `TIME_CHECK_BUFFER_SLOTS`) |
+
+### MEDIUM Severity — Resolved
+
+| ID | Finding | Resolution |
+|---|---|---|
+| MEDIUM-2 | Policy update spam | Added `POLICY_UPDATE_COOLDOWN_SLOTS` (750 slots, ~5 min) rate limiting |
+| MEDIUM-6 | Arbiter rush resolution | Added `ARBITER_RESOLUTION_DELAY_SLOTS` (216,000 slots, ~24h) delay |
+| MEDIUM-8 | No per-transaction limit | Added `maxSingleTransaction` field to `AgentPolicy` |
+| MEDIUM-9 | Reputation gaming with few transactions | Added `MIN_TRANSACTIONS_FOR_REPUTATION` (10) threshold |
+| MEDIUM-10 | Extra account metas re-initialization | Added `ExtraMetasAlreadyInitialized` check with authority validation |
+| MEDIUM-12 | Dust transfer spam | Added `MIN_TRANSFER_AMOUNT` (100 micro-units) threshold |
+
+### LOW Severity — Resolved
+
+| ID | Finding | Resolution |
+|---|---|---|
+| LOW-2 | Unbounded string fields in events | Added max length constraints on all string event fields |
+| LOW-3 | Error code numbering scheme | Established structured numbering (0x1100–0x1700 ranges) |
+
+## Security Checklist
+
+### On-Chain Programs
+
+- [x] **Signer verification** — All instructions verify that the expected authority has signed
+- [x] **Account ownership checks** — All accounts verified against expected owning programs
+- [x] **PDA seed validation** — All PDAs derived with canonical seeds and bumps
+- [x] **Integer overflow protection** — All arithmetic uses checked operations or `BN`
+- [x] **Re-initialization prevention** — All `initialize_*` instructions check for existing accounts
+- [x] **Access control** — Owner-only, buyer-only, seller-only, admin-only checks on all sensitive operations
+- [x] **State machine enforcement** — Escrow state transitions validated
+- [x] **Rate limiting** — Policy updates, Blink generation, and daily redemptions are rate-limited
+- [x] **Timelock governance** — All admin actions go through 48-hour timelock
+- [x] **Reserve invariant** — Checked on every deposit and redemption
+- [x] **Transfer hook enforcement** — Guard validates every transfer through the Token-2022 hook
+- [x] **ZK proof validation** — Proof contexts checked for freshness, ownership, and parameter matching
+- [x] **Delegation model** — Agent must be delegate; self-delegation prevention; bound account enforcement
+
+### SDK
+
+- [x] **Input validation** — All public functions validate parameters before building instructions
+- [x] **Error handling** — All errors have descriptive messages and error codes
+- [x] **Type safety** — Full TypeScript type coverage
+- [x] **Deterministic key derivation** — ElGamal and AES keys derived deterministically from owner keypair + mint
+- [x] **WASM proof generation** — ZK proofs generated client-side, never exposing secret keys to the network
+
+### Testing
+
+- [x] **47 native unit tests** for x0-zk-proofs (Rust)
+- [x] **14 WASM integration tests** for browser/Node.js proof generation
+- [x] **SDK-to-core consistency** — All discriminators, constants, and type definitions verified against on-chain programs
+
+## Planned Audit Scope
+
+When the protocol proceeds to audit, the following areas are in scope:
+
+1. **x0-guard** — Transfer hook logic, spend limit enforcement, whitelist verification, delegation model
+2. **x0-escrow** — State machine transitions, timeout handling, CPI to reputation
+3. **x0-wrapper** — Reserve invariant, timelock governance, fee calculation, emergency operations
+4. **x0-token** — Mint initialization, Token-2022 extension configuration, confidential transfer setup
+5. **x0-zk-verifier** — Proof verification logic, context freshness, parameter binding
+6. **x0-registry** — Registration, deregistration, capability metadata
+7. **x0-reputation** — Score calculation, temporal decay, CPI authorization
+8. **x0-zk-proofs** — Rust cryptographic primitives, WASM bindings
+9. **Cross-program interactions** — CPI call graph, account sharing, PDA ownership
+
+## Responsible Disclosure
+
+If you discover a security vulnerability in the x0 protocol, please report it responsibly:
+
+- **Do not** open a public GitHub issue
+- Contact the team directly via the channels listed in the project repository
+- Allow reasonable time for the team to investigate and patch before public disclosure

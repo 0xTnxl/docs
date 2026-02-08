@@ -1,0 +1,165 @@
+---
+title: "x0-escrow"
+description: "Conditional escrow with 7-state machine, dispute resolution, arbiter support, and auto-release timeout."
+icon: "handshake"
+---
+
+**Program ID:** `AhaDyVm8LBxpUwFdArA37LnHvNx6cNWe3KAiy8zGqhHF`
+
+x0-escrow enables trustless conditional payments between agents and services. Funds are locked in a PDA-controlled token account until delivery conditions are met, a dispute is resolved, or a timeout expires.
+
+## State Machine
+
+Every escrow follows a strict state transition graph:
+
+```
+Created ──fund──▶ Funded ──deliver──▶ Delivered ──release──▶ Released
+   │                │                     │
+   │cancel          │dispute              │dispute
+   ▼                ▼                     ▼
+Cancelled        Disputed ──resolve──▶ Released / Refunded
+                    │
+                    │timeout
+                    ▼
+                 Refunded
+
+Funded ──timeout──▶ auto-release ──▶ Released (to seller)
+```
+
+| State | Description |
+|---|---|
+| `Created` | Escrow account initialized, not yet funded |
+| `Funded` | Buyer has deposited tokens into the escrow vault |
+| `Delivered` | Seller has marked delivery with optional proof hash |
+| `Disputed` | Either party has raised a dispute with evidence |
+| `Released` | Funds released to seller (terminal) |
+| `Refunded` | Funds returned to buyer (terminal) |
+| `Cancelled` | Escrow cancelled before funding (terminal) |
+
+## Instructions
+
+### `create_escrow`
+
+Creates a new escrow PDA and associated token vault.
+
+```rust
+create_escrow(
+    amount: u64,
+    memo_hash: [u8; 32],
+    timeout_seconds: i64,
+    arbiter: Option<Pubkey>
+)
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `amount` | `u64` | Token amount to escrow (micro-units) |
+| `memo_hash` | `[u8; 32]` | SHA-256 of the transaction memo/agreement |
+| `timeout_seconds` | `i64` | Auto-release timeout (1 hour – 30 days) |
+| `arbiter` | `Option<Pubkey>` | Optional third-party dispute resolver |
+
+### `fund_escrow`
+
+Buyer deposits the specified amount into the escrow vault. Transitions state from `Created` → `Funded`.
+
+### `mark_delivered`
+
+Seller claims delivery, optionally providing a proof hash. Transitions `Funded` → `Delivered`.
+
+```rust
+mark_delivered(proof_hash: Option<[u8; 32]>)
+```
+
+### `release_funds`
+
+Buyer confirms satisfaction and releases funds to seller. Transitions `Delivered` → `Released`. Also records a successful transaction to x0-reputation via CPI.
+
+### `initiate_dispute`
+
+Either buyer or seller raises a dispute with evidence.
+
+```rust
+initiate_dispute(evidence_hash: [u8; 32])
+```
+
+Transitions to `Disputed`. Records the `dispute_initiated_slot` for arbiter delay enforcement.
+
+### `resolve_dispute`
+
+Only callable by the designated arbiter. Subject to `ARBITER_RESOLUTION_DELAY_SLOTS = 216,000` (~24 hours) — the arbiter cannot resolve immediately after a dispute is raised.
+
+```rust
+resolve_dispute(release_to_seller: bool)
+```
+
+- `true` → Funds released to seller, state → `Released`
+- `false` → Funds refunded to buyer, state → `Refunded`
+
+### `claim_auto_release`
+
+Seller claims funds after the timeout has expired. Only valid when state is `Funded` or `Delivered` and the timeout has passed.
+
+### `claim_timeout_refund`
+
+Buyer claims a refund if the escrow has timed out without delivery and no auto-release was triggered.
+
+### `cancel_escrow`
+
+Cancels the escrow before it is funded. Only the buyer can cancel. State → `Cancelled`.
+
+## State Account
+
+### EscrowAccount
+
+```rust
+pub struct EscrowAccount {
+    pub version: u8,
+    pub buyer: Pubkey,
+    pub seller: Pubkey,
+    pub arbiter: Option<Pubkey>,
+    pub amount: u64,
+    pub memo_hash: [u8; 32],
+    pub state: EscrowState,
+    pub timeout: i64,
+    pub created_at: i64,
+    pub delivery_proof: Option<[u8; 32]>,
+    pub dispute_evidence: Option<[u8; 32]>,
+    pub mint: Pubkey,
+    pub token_decimals: u8,
+    pub dispute_initiated_slot: u64,   // For arbiter delay
+    pub bump: u8,
+}
+```
+
+**PDA Seeds:** `["escrow", buyer, seller, memo_hash]`
+
+## Timeout Mechanics
+
+- **Default timeout:** 72 hours (`DEFAULT_ESCROW_TIMEOUT_SECONDS = 259,200`)
+- **Minimum:** 1 hour (`MIN_ESCROW_TIMEOUT_SECONDS = 3,600`)
+- **Maximum:** 30 days (`MAX_ESCROW_TIMEOUT_SECONDS = 2,592,000`)
+- **Buffer:** An additional `ESCROW_TIMEOUT_BUFFER_SLOTS = 1,500` (~10 minutes) is added as safety margin
+- **Auto-release:** After timeout, the seller can call `claim_auto_release` to receive funds
+
+## Reputation Integration
+
+On escrow completion, x0-escrow updates x0-reputation via CPI:
+
+| Outcome | Reputation Record |
+|---|---|
+| `release_funds` (buyer satisfied) | `record_success(response_time_ms)` |
+| `resolve_dispute(true)` (seller wins) | `record_resolution_favor()` |
+| `resolve_dispute(false)` (buyer wins) | `record_dispute()` |
+| Policy rejection during funding | `record_failure(error_code)` |
+
+## Events Emitted
+
+| Event | When |
+|---|---|
+| `EscrowCreated` | New escrow initialized |
+| `EscrowFunded` | Buyer deposited tokens |
+| `DeliveryMarked` | Seller claimed delivery |
+| `DisputeInitiated` | Dispute raised |
+| `FundsReleased` | Funds sent to seller |
+| `FundsRefunded` | Funds returned to buyer |
+| `DisputeResolved` | Arbiter resolved dispute |

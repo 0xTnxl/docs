@@ -1,0 +1,185 @@
+---
+title: "x0-wrapper"
+description: "1:1 USDC-backed stablecoin wrapper with timelocked governance, reserve monitoring, and emergency controls."
+icon: "repeat"
+---
+
+**Program ID:** `EomiXBbg94Smu4ipDoJtuguazcd1KjLFDFJt2fCabvJ8`
+
+x0-wrapper provides a 1:1 USDC-backed stablecoin (x0-USD) that integrates with the protocol's transfer hook and confidential transfer infrastructure. Users deposit USDC to mint x0-USD, and burn x0-USD to redeem USDC (minus a redemption fee).
+
+## Core Invariant
+
+The protocol enforces a strict reserve invariant at all times:
+
+$$
+\text{reserve\_usdc\_balance} \geq \text{outstanding\_wrapper\_supply}
+$$
+
+This ensures every x0-USD token is backed by at least 1 USDC in the reserve. The `WrapperStats.reserve_ratio_scaled()` method reports the ratio as a scaled integer (10,000 = 1.0x, 10,100 = 1.01x).
+
+## Instructions
+
+### Minting & Redemption
+
+#### `deposit_and_mint`
+
+Deposit USDC → mint x0-USD at a 1:1 ratio. No fee on deposits.
+
+```rust
+deposit_and_mint(amount: u64)
+```
+
+- Minimum deposit: `MIN_DEPOSIT_AMOUNT = 1,000,000` (1 USDC)
+- Transfers USDC from user to reserve account
+- Mints equivalent x0-USD to user's token account
+- Updates `WrapperStats` counters
+
+#### `burn_and_redeem`
+
+Burn x0-USD → redeem USDC at 1:1 minus redemption fee.
+
+```rust
+burn_and_redeem(amount: u64)
+```
+
+- Minimum redemption: `MIN_REDEMPTION_AMOUNT = 1,000,000` (1 USDC)
+- Maximum per-transaction: `MAX_REDEMPTION_PER_TX = 100,000,000,000` (100K USDC)
+- Daily cap: `MAX_DAILY_REDEMPTIONS = 1,000,000,000,000` (1M USDC)
+- Redemption fee: `WRAPPER_REDEMPTION_FEE_BPS = 80` (0.8%)
+
+```
+fee = amount * redemption_fee_bps / 10000
+user_receives = amount - fee
+```
+
+### Governance (Timelocked)
+
+All governance actions require a **48-hour timelock** (`ADMIN_TIMELOCK_SECONDS = 172,800`). The flow is:
+
+<Steps>
+  <Step title="Schedule">
+    Admin calls `schedule_*` to create an `AdminAction` PDA with a `scheduled_timestamp`.
+  </Step>
+  <Step title="Wait">
+    48 hours must pass. The action cannot be executed before `scheduled_timestamp + ADMIN_TIMELOCK_SECONDS`.
+  </Step>
+  <Step title="Execute">
+    Admin calls `execute_*` to apply the change. The `AdminAction` is marked as executed.
+  </Step>
+</Steps>
+
+#### `schedule_fee_change` / `execute_fee_change`
+
+Changes the redemption fee. New fee must be within `MIN_WRAPPER_FEE_BPS = 10` (0.1%) to `MAX_WRAPPER_FEE_BPS = 500` (5%).
+
+#### `schedule_pause` / `execute_pause`
+
+Pauses or unpauses the wrapper. When paused, deposits and redemptions are disabled.
+
+#### `emergency_pause`
+
+**Immediate** pause — bypasses the 48-hour timelock. Used for critical security incidents.
+
+#### `schedule_emergency_withdraw` / `execute_emergency_withdraw`
+
+Withdraws reserve funds to a specified destination. Subject to the 48-hour timelock.
+
+#### `cancel_admin_action`
+
+Cancels any pending (not yet executed) admin action.
+
+### Admin Transfer
+
+#### `initiate_admin_transfer`
+
+Initiates a two-step admin transfer to a new admin pubkey.
+
+#### `accept_admin_transfer`
+
+The new admin accepts the transfer. Until accepted, the original admin retains control.
+
+## State Accounts
+
+### WrapperConfig
+
+```rust
+pub struct WrapperConfig {
+    pub admin: Pubkey,              // Current admin (multisig recommended)
+    pub pending_admin: Option<Pubkey>,
+    pub usdc_mint: Pubkey,
+    pub wrapper_mint: Pubkey,       // x0-USD mint
+    pub reserve_account: Pubkey,    // USDC reserve PDA
+    pub redemption_fee_bps: u16,
+    pub is_paused: bool,
+    pub bump: u8,
+}
+```
+
+**PDA Seeds:** `["wrapper_config"]`
+
+### WrapperStats
+
+```rust
+pub struct WrapperStats {
+    pub reserve_usdc_balance: u64,
+    pub outstanding_wrapper_supply: u64,
+    pub total_deposits: u64,
+    pub total_redemptions: u64,
+    pub total_fees_collected: u64,
+    pub daily_redemption_volume: u64,
+    pub daily_redemption_reset_timestamp: i64,
+    pub last_updated: i64,
+    pub bump: u8,
+}
+```
+
+**PDA Seeds:** `["wrapper_stats"]`
+
+Key methods:
+- `reserve_ratio_scaled()` — Returns `reserve * 10000 / supply` (10,000 = 1.0x backing)
+- `is_healthy()` — `ratio >= MIN_RESERVE_RATIO_SCALED` (10,000)
+- `is_warning()` — `ratio < RESERVE_WARNING_THRESHOLD` (10,100)
+- `maybe_reset_daily_counter()` — Resets daily redemption volume at midnight
+
+### AdminAction
+
+```rust
+pub struct AdminAction {
+    pub action_type: AdminActionType,
+    pub scheduled_timestamp: i64,
+    pub new_value: u64,             // For fee changes
+    pub new_admin: Pubkey,          // For admin transfers
+    pub destination: Pubkey,        // For emergency withdrawals
+    pub executed: bool,
+    pub cancelled: bool,
+    pub bump: u8,
+}
+```
+
+**PDA Seeds:** `["admin_action", action_type]`
+
+## Reserve Monitoring
+
+The protocol emits `ReserveAlert` events when the reserve ratio drops below warning thresholds:
+
+| Level | Condition | Meaning |
+|---|---|---|
+| `Warning` | Ratio < 1.01x | Reserve approaching 1:1 — redemptions may deplete it |
+| `Critical` | Ratio < 1.0x | **Undercollateralized** — should not be possible under normal operation |
+
+## Events Emitted
+
+| Event | When |
+|---|---|
+| `WrapperInitialized` | Config and mint created |
+| `DepositMinted` | USDC deposited, x0-USD minted |
+| `RedemptionCompleted` | x0-USD burned, USDC redeemed |
+| `ReserveAlert` | Reserve ratio below threshold |
+| `WrapperPausedEvent` | Wrapper paused/unpaused |
+| `FeeRateUpdated` | Redemption fee changed |
+| `AdminActionScheduled` | Timelock action created |
+| `AdminActionExecuted` | Timelock action applied |
+| `AdminActionCancelled` | Pending action cancelled |
+| `EmergencyWithdrawal` | Reserve funds withdrawn |
+| `AdminTransferred` | Admin key changed |

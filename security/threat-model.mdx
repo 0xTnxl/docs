@@ -1,0 +1,96 @@
+---
+title: "Threat Model"
+description: "Adversary model, trust assumptions, and security boundaries of the x0 protocol."
+icon: "shield"
+---
+
+## Adversary Model
+
+The x0 protocol assumes the following adversary capabilities:
+
+| Adversary | Capabilities | Assumed Limitations |
+|---|---|---|
+| **Compromised Agent** | Controls agent private key; can sign transactions as the agent | Cannot forge the owner's signature; cannot exceed policy limits |
+| **Malicious Seller** | Can submit false delivery claims; can collude with arbiter | Cannot access escrowed funds without buyer release or arbiter resolution |
+| **Malicious Buyer** | Can initiate frivolous disputes; can refuse to release funds | Cannot prevent auto-release after timeout; reputation suffers |
+| **Rogue Arbiter** | Can resolve disputes unfairly | Subject to 24-hour resolution delay; cannot act before delay expires |
+| **Network Attacker** | Can observe all public transactions; can attempt front-running | Cannot decrypt confidential transfer amounts; cannot forge ZK proofs |
+| **Clock Manipulator** | Validator can skew `Clock::get()` by small amounts | Slot-based dual checks limit exploitable window to ~5 minutes |
+
+## Trust Assumptions
+
+### What You Trust
+
+1. **Solana validator consensus** — Transactions are finalized correctly by the network
+2. **Token-2022 program correctness** — SPL Token-2022 correctly enforces transfer hooks and confidential transfers
+3. **Cryptographic hardness** — Ristretto group discrete log is hard; SHA-256 is collision-resistant; Groth16 proofs are sound
+4. **Owner key custody** — The human owner securely stores their private key
+
+### What You Don't Need to Trust
+
+1. **The agent** — Agent spending is bound by on-chain policy; exceeded limits trigger Blinks for human approval
+2. **The counterparty** — Escrow protects both buyer and seller; funds cannot be unilaterally released
+3. **The protocol team** — Wrapper governance uses 48-hour timelocks; all admin actions are observable on-chain
+4. **Network privacy** — Confidential transfers encrypt amounts using ElGamal; only the owner and optional auditor can decrypt
+
+## Security Boundaries
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Owner (Human)                     │
+│     • Holds master key                              │
+│     • Approves Blinks                               │
+│     • Sets policy parameters                        │
+├─────────────────────────────────────────────────────┤
+│               x0-guard (On-chain)                   │
+│     • Enforces spend limits (policy layer)          │
+│     • Validates whitelists                          │
+│     • Rate-limits Blinks                            │
+│     • Transfer hook enforcement                     │
+├─────────────────────────────────────────────────────┤
+│                Agent (Autonomous)                    │
+│     • Operates within policy bounds                 │
+│     • Can spend up to daily limit                   │
+│     • Cannot modify own policy                      │
+│     • Can be revoked at any time                    │
+├─────────────────────────────────────────────────────┤
+│              Solana Runtime (Base)                   │
+│     • Transaction execution                         │
+│     • Account model & PDA enforcement               │
+│     • Clock & slot progression                      │
+└─────────────────────────────────────────────────────┘
+```
+
+## Defense-in-Depth Layers
+
+<Steps>
+  <Step title="Policy Layer (x0-guard)">
+    Rolling 24-hour spend limits, per-transaction limits, and whitelist enforcement at the transfer hook level. Every token transfer flows through the guard.
+  </Step>
+  <Step title="Delegation Layer">
+    Agents must be delegates, not token account owners. The owner's token account is bound to the policy, preventing the agent from transferring from unauthorized accounts.
+  </Step>
+  <Step title="Escrow Layer">
+    Multi-party payments go through escrow with timeout-based auto-release and arbiter dispute resolution. Reputation is updated via CPI at settlement.
+  </Step>
+  <Step title="Cryptographic Layer">
+    Confidential transfers use ElGamal encryption with ZK proofs for amount validity. The guard validates proof context accounts before approving confidential transfers.
+  </Step>
+  <Step title="Governance Layer">
+    All protocol-level changes (fee updates, pausing, emergency withdrawals) go through a 48-hour timelock with on-chain visibility.
+  </Step>
+</Steps>
+
+## Clock Manipulation Protection
+
+Solana's `Clock::get()` can be influenced by validators. The protocol mitigates this through dual time verification:
+
+| Mechanism | Constant | Purpose |
+|---|---|---|
+| Slot-based rolling window | `ROLLING_WINDOW_SLOTS = 216,000` | ~24h spend window using slots |
+| Time check buffer | `TIME_CHECK_BUFFER_SLOTS = 750` | ~5 min tolerance for clock skew |
+| Escrow timeout buffer | `ESCROW_TIMEOUT_BUFFER_SLOTS = 1,500` | ~10 min safety margin on timeouts |
+| Policy update cooldown | `POLICY_UPDATE_COOLDOWN_SLOTS = 750` | ~5 min between policy updates |
+| Arbiter resolution delay | `ARBITER_RESOLUTION_DELAY_SLOTS = 216,000` | ~24h delay for arbiter resolution |
+
+Both Unix timestamp and slot number are checked for critical time-dependent operations.

@@ -1,0 +1,169 @@
+---
+title: "Token Operations"
+description: "Manage the x0-USD token mint, transfer fees, and Token-2022 extensions using TokenClient."
+icon: "coins"
+---
+
+## TokenClient
+
+The `TokenClient` handles x0-USD mint initialization, fee configuration, and token operations using SPL Token-2022.
+
+```typescript
+import { TokenClient, createTokenClient } from '@x0-protocol/sdk';
+
+const tokenClient = createTokenClient(connection);
+```
+
+## Mint Initialization
+
+### `buildInitializeMintInstruction(params, payer)`
+
+Create a new x0-USD token mint with Token-2022 extensions:
+
+```typescript
+import { Keypair } from '@solana/web3.js';
+
+const mintKeypair = Keypair.generate();
+
+const ix = tokenClient.buildInitializeMintInstruction(
+  {
+    mint: mintKeypair,
+    mintAuthority: adminPubkey,
+    decimals: 6,
+    feeReceiver: treasuryPubkey,
+    enableConfidential: true,
+  },
+  payerPubkey
+);
+```
+
+This instruction initializes a mint with:
+- **TransferFee** extension — 0.8% protocol fee
+- **TransferHook** extension — x0-guard policy enforcement
+- **ConfidentialTransfer** extension (optional) — ElGamal-encrypted balances
+
+### `buildConfigureConfidentialInstruction(params, authority)`
+
+Enable confidential transfers on an existing mint:
+
+```typescript
+const ix = tokenClient.buildConfigureConfidentialInstruction(
+  {
+    mint: mintPubkey,
+    autoApproveNewAccounts: true,
+  },
+  authorityPubkey
+);
+```
+
+## Token Operations
+
+### `buildMintTokensInstruction(params, authority)`
+
+Mint new tokens (authority only):
+
+```typescript
+const ix = tokenClient.buildMintTokensInstruction(
+  {
+    mint: mintPubkey,
+    destination: recipientAta,
+    amount: new BN(1_000_000_000), // 1000 tokens
+  },
+  mintAuthorityPubkey
+);
+```
+
+### `buildDepositConfidentialInstruction(params, owner)`
+
+Deposit public tokens into the confidential balance:
+
+```typescript
+const ix = tokenClient.buildDepositConfidentialInstruction(
+  {
+    mint: mintPubkey,
+    tokenAccount: ownerAta,
+    amount: new BN(50_000_000),
+  },
+  ownerPubkey
+);
+```
+
+## Fee Management
+
+### `buildWithdrawFeesInstruction(mint, sourceAccounts, feeReceiver, authority)`
+
+Withdraw accumulated transfer fees from token accounts:
+
+```typescript
+const ix = tokenClient.buildWithdrawFeesInstruction(
+  mintPubkey,
+  [account1, account2, account3],
+  treasuryPubkey,
+  mintAuthorityPubkey
+);
+```
+
+### `buildHarvestFeesInstruction(mint, authority, sourceAccounts)`
+
+Harvest fees from multiple accounts in a single transaction.
+
+## Fee Calculation
+
+### `calculateTransferFee(amount)`
+
+```typescript
+const fee = tokenClient.calculateTransferFee(new BN(1_000_000));
+// fee = 8000 (0.8%)
+```
+
+### `calculateAmountAfterFee(amount)`
+
+```typescript
+const net = tokenClient.calculateAmountAfterFee(new BN(1_000_000));
+// net = 992000
+```
+
+## Token Account Helpers
+
+### `getAssociatedTokenAddress(mint, owner)`
+
+```typescript
+const ata = tokenClient.getAssociatedTokenAddress(mintPubkey, ownerPubkey);
+```
+
+### `buildCreateATAInstruction(mint, owner, payer)`
+
+```typescript
+const ix = tokenClient.buildCreateATAInstruction(mintPubkey, ownerPubkey, payerPubkey);
+```
+
+## Mint Info
+
+### `fetchMintInfo(mint)`
+
+```typescript
+const info = await tokenClient.fetchMintInfo(mintPubkey);
+```
+
+**Returns:** `X0TokenMintInfo`
+
+| Field | Type | Description |
+|---|---|---|
+| `address` | `PublicKey` | Mint address |
+| `mintAuthority` | `PublicKey` | Current mint authority |
+| `supply` | `BN` | Total token supply |
+| `decimals` | `number` | Token decimals (6) |
+| `transferHookProgramId` | `PublicKey` | x0-guard program ID |
+| `transferFeeBps` | `number` | Transfer fee in basis points |
+| `feeReceiver` | `PublicKey` | Fee receiver account |
+| `confidentialEnabled` | `boolean` | Whether confidential transfers are enabled |
+
+## Factory
+
+### `deriveExtraAccountMetasPda(mint)`
+
+Derive the PDA for the TransferHook extra account metas:
+
+```typescript
+const [metasPda, bump] = deriveExtraAccountMetasPda(mintPubkey);
+```

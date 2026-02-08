@@ -1,0 +1,128 @@
+---
+title: "x0-reputation"
+description: "On-chain reputation oracle with weighted scoring, temporal decay, and cross-program integration."
+icon: "star"
+---
+
+**Program ID:** `FfzkTWRGAJQPDePbujZdEhKHqC1UpqvDrpv4TEiWpx6y`
+
+x0-reputation provides a quantitative trust score for every agent in the protocol. Scores are computed from on-chain transaction history and decay over time to ensure recency relevance.
+
+## Scoring Formula
+
+The reputation score is a weighted combination of four metrics, scaled to 0–10,000:
+
+$$
+S = 10000 \times \left( W_s \cdot R_s + W_r \cdot R_r + W_d \cdot (1 - D_r) + W_f \cdot (1 - F_r) \right)
+$$
+
+Where:
+
+| Symbol | Weight | Metric | Formula |
+|---|---|---|---|
+| $R_s$ | $W_s = 0.60$ | Success rate | `successful / total` |
+| $R_r$ | $W_r = 0.15$ | Resolution rate | `resolved_in_favor / disputed` |
+| $D_r$ | $W_d = 0.10$ | Dispute rate | `disputed / total` |
+| $F_r$ | $W_f = 0.15$ | Failure rate | `failed / total` |
+
+A perfect agent (100% success, 0% disputes, 0% failures) scores **10,000**. An agent with no transactions returns **0** (unreliable score — below `MIN_TRANSACTIONS_FOR_REPUTATION = 10`).
+
+## Instructions
+
+### `initialize_reputation`
+
+Creates a new reputation account for an agent.
+
+### `record_success`
+
+Records a successful transaction with response time tracking.
+
+```rust
+record_success(response_time_ms: u32)
+```
+
+Updates `successful_transactions`, `total_transactions`, and the rolling `average_response_time_ms`.
+
+### `record_failure`
+
+Records a policy rejection or transaction failure.
+
+```rust
+record_failure(error_code: u32)
+```
+
+### `record_dispute`
+
+Records that a dispute was initiated against this agent.
+
+### `record_resolution_favor`
+
+Records that a dispute was resolved in this agent's favor.
+
+### `apply_decay`
+
+Applies monthly temporal decay to the reputation score. Can be called by anyone (permissionless maintenance).
+
+### `get_reputation_score`
+
+View instruction — returns the current computed score as a `u32` (0–10,000).
+
+### `close_reputation`
+
+Closes the reputation account and reclaims rent. Only the owner can call this.
+
+## State Account
+
+### AgentReputation
+
+```rust
+pub struct AgentReputation {
+    pub version: u8,
+    pub agent_id: Pubkey,
+    pub total_transactions: u64,
+    pub successful_transactions: u64,
+    pub disputed_transactions: u64,
+    pub resolved_in_favor: u64,
+    pub failed_transactions: u64,
+    pub average_response_time_ms: u32,
+    pub cumulative_response_time_ms: u64,
+    pub last_updated: i64,
+    pub last_decay_applied: i64,
+    pub bump: u8,
+}
+```
+
+**PDA Seeds:** `["reputation", agent_id]`
+
+## Temporal Decay
+
+To prevent stale scores from persisting indefinitely, reputation decays at 1% per month (`REPUTATION_DECAY_RATE_BPS = 100`):
+
+1. When `apply_decay` is called, elapsed months since `last_decay_applied` are computed
+2. For each elapsed month, all counters are multiplied by `0.99`
+3. This ensures inactive agents gradually lose their accumulated reputation
+4. Active agents naturally counteract decay through new transactions
+
+## Authorization Model
+
+Reputation updates are restricted to **authorized programs** via CPI:
+
+| Caller | Allowed Operations |
+|---|---|
+| x0-escrow | `record_success`, `record_dispute`, `record_resolution_favor` |
+| x0-guard | `record_failure` |
+| Anyone | `apply_decay`, `get_reputation_score` |
+| Owner only | `initialize_reputation`, `close_reputation` |
+
+This prevents reputation manipulation — only verified program outcomes can modify scores.
+
+## Reliability Threshold
+
+An agent's score is considered **reliable** only after `MIN_TRANSACTIONS_FOR_REPUTATION = 10` transactions. Below this threshold, the `has_reliable_score()` method returns `false`, and consumers should treat the score with caution.
+
+## Events Emitted
+
+| Event | When |
+|---|---|
+| `ReputationInitialized` | New reputation account created |
+| `ReputationUpdated` | Any counter modified (success, dispute, failure, decay) |

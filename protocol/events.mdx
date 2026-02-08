@@ -1,0 +1,411 @@
+---
+title: "Events Reference"
+description: "Complete reference of all protocol events emitted by x0 on-chain programs."
+icon: "bell"
+---
+
+All x0 programs emit Anchor events for off-chain indexing, analytics, and real-time monitoring. Events are logged via `emit!()` and can be consumed using any Solana event subscription mechanism.
+
+## Guard Events
+
+### PolicyCreated
+
+Emitted when a new agent policy is initialized.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `owner` | `Pubkey` | Owner's wallet address |
+| `agent_signer` | `Pubkey` | Agent's signing key |
+| `daily_limit` | `u64` | Initial daily spending limit |
+| `timestamp` | `i64` | Unix timestamp |
+
+### PolicyUpdated
+
+Emitted when an agent policy is modified.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `daily_limit` | `Option<u64>` | New daily limit (if changed) |
+| `agent_signer` | `Option<Pubkey>` | New agent signer (if rotated) |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AgentRevoked
+
+Emitted when an agent's authority is revoked.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `revoked_signer` | `Pubkey` | The revoked agent signer |
+| `timestamp` | `i64` | Unix timestamp |
+
+### TransferValidated
+
+Emitted when a transfer passes guard validation.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `amount` | `u64` | Transfer amount |
+| `recipient` | `Pubkey` | Recipient address |
+| `current_spend_24h` | `u64` | Running 24h spend after this transfer |
+| `remaining_allowance` | `u64` | Remaining daily allowance |
+| `is_confidential` | `bool` | Whether this was a confidential transfer |
+| `timestamp` | `i64` | Unix timestamp |
+
+### TransferRejected
+
+Emitted when a transfer is rejected by the guard.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `amount` | `u64` | Attempted transfer amount |
+| `recipient` | `Pubkey` | Attempted recipient |
+| `reason_code` | `u16` | Error code (see Errors reference) |
+| `timestamp` | `i64` | Unix timestamp |
+
+### BlinkGenerated
+
+Emitted when a Blink is generated for human-in-the-loop approval.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `agent` | `Pubkey` | Agent that triggered the Blink |
+| `amount` | `u64` | Requested amount |
+| `recipient` | `Pubkey` | Requested recipient |
+| `expires_at` | `i64` | Blink expiration timestamp |
+| `timestamp` | `i64` | Unix timestamp |
+
+### WhitelistUpdated
+
+Emitted when the whitelist configuration is changed.
+
+| Field | Type | Description |
+|---|---|---|
+| `policy` | `Pubkey` | Policy PDA address |
+| `mode` | `String` | New mode: `"none"`, `"merkle"`, `"bloom"`, `"explicit"` (max 32 chars) |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Escrow Events
+
+### EscrowCreated
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `buyer` | `Pubkey` | Buyer address |
+| `seller` | `Pubkey` | Seller address |
+| `arbiter` | `Option<Pubkey>` | Optional arbiter |
+| `amount` | `u64` | Escrow amount |
+| `memo_hash` | `[u8; 32]` | SHA-256 of service description |
+| `timeout` | `i64` | Escrow timeout timestamp |
+| `timestamp` | `i64` | Unix timestamp |
+
+### EscrowFunded
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `amount` | `u64` | Amount funded |
+| `timestamp` | `i64` | Unix timestamp |
+
+### DeliveryMarked
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `proof_hash` | `Option<[u8; 32]>` | Optional delivery proof hash |
+| `timestamp` | `i64` | Unix timestamp |
+
+### DisputeInitiated
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `initiator` | `Pubkey` | Party that initiated the dispute |
+| `evidence_hash` | `[u8; 32]` | SHA-256 of dispute evidence |
+| `timestamp` | `i64` | Unix timestamp |
+
+### FundsReleased
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `amount` | `u64` | Amount released |
+| `recipient` | `Pubkey` | Recipient (seller) |
+| `is_auto_release` | `bool` | Whether this was auto-release on timeout |
+| `timestamp` | `i64` | Unix timestamp |
+
+### FundsRefunded
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `amount` | `u64` | Amount refunded |
+| `recipient` | `Pubkey` | Recipient (buyer) |
+| `reason` | `String` | Reason for refund (max 128 chars) |
+| `timestamp` | `i64` | Unix timestamp |
+
+### DisputeResolved
+
+| Field | Type | Description |
+|---|---|---|
+| `escrow` | `Pubkey` | Escrow PDA address |
+| `resolver` | `Pubkey` | Arbiter or auto-resolver |
+| `winner` | `Pubkey` | Winner of the dispute |
+| `amount` | `u64` | Amount awarded |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Registry Events
+
+### AgentRegistered
+
+| Field | Type | Description |
+|---|---|---|
+| `registry_entry` | `Pubkey` | Registry entry PDA |
+| `agent_id` | `Pubkey` | Agent's policy PDA |
+| `endpoint` | `String` | Service endpoint URL (max 200 chars) |
+| `capability_count` | `u8` | Number of capabilities registered |
+| `timestamp` | `i64` | Unix timestamp |
+
+### RegistryUpdated
+
+| Field | Type | Description |
+|---|---|---|
+| `registry_entry` | `Pubkey` | Registry entry PDA |
+| `updated_fields` | `Vec<String>` | Fields that changed (max 10, each max 32 chars) |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AgentDeregistered
+
+| Field | Type | Description |
+|---|---|---|
+| `registry_entry` | `Pubkey` | Registry entry PDA |
+| `agent_id` | `Pubkey` | Agent's policy PDA |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Reputation Events
+
+### ReputationInitialized
+
+| Field | Type | Description |
+|---|---|---|
+| `reputation` | `Pubkey` | Reputation PDA |
+| `agent_id` | `Pubkey` | Agent's policy PDA |
+| `timestamp` | `i64` | Unix timestamp |
+
+### ReputationUpdated
+
+| Field | Type | Description |
+|---|---|---|
+| `reputation` | `Pubkey` | Reputation PDA |
+| `update_type` | `String` | One of: `"success"`, `"dispute"`, `"resolution"`, `"decay"` (max 32 chars) |
+| `total_transactions` | `u64` | New total transaction count |
+| `score_scaled` | `u32` | New reputation score (scaled by 1000) |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Token Events
+
+### ConfidentialTransferExecuted
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | `Pubkey` | Source account (agent) |
+| `destination` | `Pubkey` | Destination account |
+| `encrypted_amount` | `Option<[u8; 64]>` | Encrypted amount (for auditor) |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AuditLog
+
+| Field | Type | Description |
+|---|---|---|
+| `agent` | `Pubkey` | Agent's policy PDA |
+| `ciphertext` | `[u8; 64]` | Encrypted amount (decryptable by auditor) |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Protocol Events
+
+### ProtocolConfigUpdated
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Protocol config PDA |
+| `admin` | `Pubkey` | Admin who made the update |
+| `update_description` | `String` | Description of change (max 256 chars) |
+| `timestamp` | `i64` | Unix timestamp |
+
+### ProtocolPaused
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Protocol config PDA |
+| `is_paused` | `bool` | Whether protocol is now paused |
+| `reason` | `String` | Reason for pause (max 128 chars) |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Wrapper Events
+
+### WrapperInitialized
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Wrapper config PDA |
+| `usdc_mint` | `Pubkey` | USDC mint address |
+| `wrapper_mint` | `Pubkey` | x0-USD mint address |
+| `reserve_account` | `Pubkey` | Reserve account address |
+| `admin` | `Pubkey` | Initial admin |
+| `timestamp` | `i64` | Unix timestamp |
+
+### DepositMinted
+
+| Field | Type | Description |
+|---|---|---|
+| `user` | `Pubkey` | User who deposited |
+| `usdc_amount` | `u64` | USDC deposited |
+| `wrapper_minted` | `u64` | x0-USD minted (1:1) |
+| `reserve_balance` | `u64` | New reserve balance |
+| `outstanding_supply` | `u64` | New outstanding supply |
+| `timestamp` | `i64` | Unix timestamp |
+
+### RedemptionCompleted
+
+| Field | Type | Description |
+|---|---|---|
+| `user` | `Pubkey` | User who redeemed |
+| `amount_burned` | `u64` | x0-USD burned |
+| `usdc_paid` | `u64` | USDC paid out (after fee) |
+| `fee_collected` | `u64` | Fee collected |
+| `reserve_balance` | `u64` | New reserve balance |
+| `outstanding_supply` | `u64` | New outstanding supply |
+| `timestamp` | `i64` | Unix timestamp |
+
+### ReserveAlert
+
+| Field | Type | Description |
+|---|---|---|
+| `reserve_ratio` | `u64` | Reserve ratio scaled by 10000 |
+| `reserve_balance` | `u64` | Current reserve balance |
+| `outstanding_supply` | `u64` | Current outstanding supply |
+| `severity` | `AlertLevel` | `Warning` or `Critical` |
+| `timestamp` | `i64` | Unix timestamp |
+
+**AlertLevel enum:**
+- `Warning` — Reserve ratio below 1.01 (less than 1% overcollateralization)
+- `Critical` — Reserve ratio below 1.0 (undercollateralized)
+
+### WrapperPausedEvent
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Wrapper config PDA |
+| `is_paused` | `bool` | Whether wrapper is now paused |
+| `admin` | `Pubkey` | Admin who triggered the action |
+| `timestamp` | `i64` | Unix timestamp |
+
+### FeeRateUpdated
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Wrapper config PDA |
+| `old_fee_bps` | `u16` | Previous fee rate in basis points |
+| `new_fee_bps` | `u16` | New fee rate in basis points |
+| `admin` | `Pubkey` | Admin who made the change |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AdminActionScheduled
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | `Pubkey` | Admin action PDA |
+| `action_type` | `String` | Type of governance action |
+| `scheduled_timestamp` | `i64` | When the action can be executed |
+| `admin` | `Pubkey` | Admin who scheduled |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AdminActionExecuted
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | `Pubkey` | Admin action PDA |
+| `action_type` | `String` | Type of action executed |
+| `admin` | `Pubkey` | Admin who executed |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AdminActionCancelled
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | `Pubkey` | Admin action PDA |
+| `admin` | `Pubkey` | Admin who cancelled |
+| `timestamp` | `i64` | Unix timestamp |
+
+### EmergencyWithdrawal
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Wrapper config PDA |
+| `amount` | `u64` | Amount withdrawn |
+| `destination` | `Pubkey` | Destination address |
+| `admin` | `Pubkey` | Admin who executed |
+| `timestamp` | `i64` | Unix timestamp |
+
+### AdminTransferred
+
+| Field | Type | Description |
+|---|---|---|
+| `config` | `Pubkey` | Wrapper config PDA |
+| `old_admin` | `Pubkey` | Previous admin |
+| `new_admin` | `Pubkey` | New admin |
+| `timestamp` | `i64` | Unix timestamp |
+
+---
+
+## Subscribing to Events
+
+### Using Anchor
+
+```typescript
+import { Program, AnchorProvider } from '@coral-xyz/anchor';
+
+const program = new Program(idl, programId, provider);
+
+// Listen for specific events
+const listener = program.addEventListener('TransferValidated', (event, slot) => {
+  console.log(`Transfer of ${event.amount} validated at slot ${slot}`);
+  console.log(`24h spend: ${event.currentSpend24h}`);
+});
+
+// Remove listener
+program.removeEventListener(listener);
+```
+
+### Using Transaction Logs
+
+Events are encoded in Solana transaction logs. Parse them from confirmed transactions:
+
+```typescript
+const tx = await connection.getTransaction(signature, {
+  commitment: 'confirmed',
+});
+
+const eventParser = new EventParser(programId, new BorshCoder(idl));
+for (const event of eventParser.parse(tx.meta.logMessages)) {
+  console.log(event.name, event.data);
+}
+```

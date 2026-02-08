@@ -1,0 +1,202 @@
+---
+title: "Escrow"
+description: "Build agent-to-agent payment escrows with the EscrowManager class."
+icon: "handshake"
+---
+
+## EscrowManager
+
+The `EscrowManager` class handles the full escrow lifecycle — creation, funding, delivery, dispute, and resolution.
+
+```typescript
+import { EscrowManager } from '@x0-protocol/sdk';
+
+const escrowManager = new EscrowManager(connection);
+// or via client:
+const escrowManager = client.escrow;
+```
+
+## PDA Derivation
+
+### `deriveEscrowAddress(buyer, seller, serviceMemo)`
+
+```typescript
+const escrowPda = escrowManager.deriveEscrowAddress(
+  buyerPubkey,
+  sellerPubkey,
+  'Code review service'
+);
+```
+
+Seeds: `["escrow", buyer.toBytes(), seller.toBytes(), sha256(memo)]`
+
+## Full Lifecycle Example
+
+```typescript
+import { EscrowState } from '@x0-protocol/sdk';
+
+// 1. Create escrow
+const { instruction: createIx, escrowAddress } = escrowManager.buildCreateEscrowInstruction({
+  buyer: buyerPubkey,
+  seller: sellerPubkey,
+  amount: new BN(50_000_000), // 50 USDC
+  memo: 'Smart contract audit',
+  mint: x0UsdMint,
+  timeoutSeconds: 259_200, // 72 hours
+});
+
+// 2. Fund escrow
+const fundIx = escrowManager.buildFundEscrowInstruction(
+  buyerPubkey, escrowAddress, x0UsdMint, new BN(50_000_000)
+);
+
+// 3. Seller delivers
+const deliverIx = escrowManager.buildMarkDeliveredInstruction(
+  sellerPubkey, escrowAddress
+);
+
+// 4. Buyer releases funds
+const releaseIx = escrowManager.buildReleaseFundsInstruction(
+  buyerPubkey, sellerPubkey, escrowAddress, x0UsdMint
+);
+```
+
+## Building Instructions
+
+### `buildCreateEscrowInstruction(params)`
+
+| Parameter | Type | Description |
+|---|---|---|
+| `buyer` | `PublicKey` | Buyer's wallet |
+| `seller` | `PublicKey` | Seller's wallet |
+| `arbiter?` | `PublicKey` | Optional dispute arbiter |
+| `amount` | `BN` | Escrow amount in micro-units |
+| `memo` | `string` | Service description (hashed on-chain) |
+| `mint` | `PublicKey` | Token mint for escrow |
+| `timeoutSeconds?` | `number` | Custom timeout (default: 72h) |
+
+### `buildFundEscrowInstruction(buyer, escrowAddress, mint, amount)`
+
+Transfer tokens into the escrow account. Only the buyer can call this.
+
+### `buildMarkDeliveredInstruction(seller, escrowAddress)`
+
+Seller signals that the service has been delivered.
+
+### `buildReleaseFundsInstruction(buyer, seller, escrowAddress, mint, reputationAccounts?)`
+
+Buyer confirms delivery and releases funds to seller. Optionally updates seller's reputation via CPI.
+
+```typescript
+const releaseIx = escrowManager.buildReleaseFundsInstruction(
+  buyerPubkey,
+  sellerPubkey,
+  escrowAddress,
+  x0UsdMint,
+  {
+    sellerReputation: reputationPda,
+    sellerPolicy: sellerPolicyPda,
+    reputationProgram: reputationProgramId,
+  }
+);
+```
+
+### `buildInitiateDisputeInstruction(disputeInitiator, escrowAddress, reason, reputationAccounts?)`
+
+Open a dispute with evidence.
+
+### `buildResolveDisputeInstruction(arbiter, escrowAddress, buyer, seller, mint, favorSeller)`
+
+Arbiter resolves a dispute. Subject to 24-hour delay after dispute initiation.
+
+### `buildClaimAutoReleaseInstruction(seller, escrowAddress, mint, reputationAccounts?)`
+
+Seller claims funds after timeout with no buyer action.
+
+### `buildClaimTimeoutRefundInstruction(buyer, escrowAddress, mint)`
+
+Buyer claims refund after escrow timeout.
+
+### `buildCancelEscrowInstruction(buyer, escrowAddress)`
+
+Cancel an unfunded escrow.
+
+## Querying Escrows
+
+### `fetchEscrow(escrowAddress)`
+
+```typescript
+const escrow = await escrowManager.fetchEscrow(escrowPda);
+```
+
+**Returns:** `EscrowAccount | null`
+
+### `getEscrowsForBuyer(buyer)`
+
+```typescript
+const escrows = await escrowManager.getEscrowsForBuyer(buyerPubkey);
+// [{ address: PublicKey, account: EscrowAccount }]
+```
+
+### `getEscrowsForSeller(seller)`
+
+```typescript
+const escrows = await escrowManager.getEscrowsForSeller(sellerPubkey);
+```
+
+## State Helpers
+
+### `getStateLabel(state)`
+
+```typescript
+escrowManager.getStateLabel(EscrowState.Funded); // "Funded"
+```
+
+### `canAutoRelease(escrow)`
+
+Check if the escrow is eligible for auto-release (delivered + timeout passed).
+
+### `canTimeoutRefund(escrow)`
+
+Check if the escrow is eligible for timeout refund.
+
+### `getTimeUntilTimeout(escrow)`
+
+```typescript
+const seconds = escrowManager.getTimeUntilTimeout(escrow);
+if (seconds !== null) {
+  console.log(`Timeout in ${seconds / 3600} hours`);
+}
+```
+
+## EscrowAccount
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | `number` | Account version |
+| `buyer` | `PublicKey` | Buyer's wallet |
+| `seller` | `PublicKey` | Seller's wallet |
+| `arbiter` | `PublicKey?` | Optional arbiter |
+| `amount` | `BN` | Escrowed amount |
+| `memoHash` | `Uint8Array` | SHA-256 of service memo |
+| `state` | `EscrowState` | Current state |
+| `timeout` | `number` | Timeout timestamp |
+| `createdAt` | `number` | Creation timestamp |
+| `deliveryProof` | `Uint8Array?` | Delivery proof hash |
+| `disputeEvidence` | `Uint8Array?` | Dispute evidence hash |
+| `mint` | `PublicKey` | Token mint |
+| `tokenDecimals` | `number` | Token decimals |
+| `disputeInitiatedSlot` | `number?` | Slot when dispute was opened |
+| `bump` | `number` | PDA bump |
+
+## EscrowState Enum
+
+| Value | Name | Description |
+|---|---|---|
+| `0` | `Created` | Escrow initialized, awaiting funding |
+| `1` | `Funded` | Buyer has funded the escrow |
+| `2` | `Delivered` | Seller has marked delivery |
+| `3` | `Disputed` | Dispute has been opened |
+| `4` | `Released` | Funds released to seller |
+| `5` | `Refunded` | Funds refunded to buyer |
+| `6` | `Cancelled` | Escrow cancelled before funding |

@@ -1,0 +1,111 @@
+---
+title: "HTTP 402 Protocol"
+description: "Machine-to-machine payment flow using HTTP 402 Payment Required for autonomous agent commerce."
+icon: "credit-card"
+---
+
+The x0 protocol implements the **HTTP 402 Payment Required** status code for machine-to-machine payment negotiation. This enables autonomous agents to discover, negotiate, pay for, and consume services without human intervention.
+
+## Protocol Flow
+
+```
+Agent                          Service
+  │                               │
+  │── GET /api/resource ─────────▶│
+  │                               │
+  │◀── 402 Payment Required ─────│
+  │    X-PAYMENT: {               │
+  │      recipient, amount,       │
+  │      resource, nonce          │
+  │    }                          │
+  │                               │
+  │── [build & submit tx] ──▶ Solana
+  │                               │
+  │── GET /api/resource ─────────▶│
+  │    X-PAYMENT-PROOF: {         │
+  │      signature, payer         │
+  │    }                          │
+  │                               │
+  │◀── 200 OK + response ───────│
+```
+
+## Payment Request (402 Response)
+
+When a service requires payment, it returns HTTP 402 with an `X-PAYMENT` header:
+
+```json
+{
+  "version": "2.0",
+  "protocol": "x0-01",
+  "network": "solana-devnet",
+  "recipient": "ServiceWallet111111111111111111111111111111",
+  "amount": 1000000,
+  "token": "x0-USD mint address",
+  "resource": "/api/v1/generate",
+  "nonce": "abc123def456",
+  "expires": 1706745600
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `version` | `string` | Protocol version (`"2.0"`) |
+| `protocol` | `string` | Protocol identifier (`"x0-01"`) |
+| `network` | `string` | Solana network identifier |
+| `recipient` | `string` | Service's receiving wallet (base58) |
+| `amount` | `number` | Payment amount in micro-units |
+| `token` | `string` | Token mint address |
+| `resource` | `string` | API resource path being purchased |
+| `nonce` | `string` | Unique challenge to prevent replay |
+| `expires` | `number` | Unix timestamp when the request expires |
+
+## Payment Proof (Subsequent Request)
+
+After submitting the payment transaction on-chain, the agent includes proof in its next request:
+
+```json
+{
+  "signature": "5wHu1qwD7q4...",
+  "payer": "AgentWallet111111111111111111111111111111111"
+}
+```
+
+The service verifies:
+1. Transaction exists on-chain and is confirmed
+2. Transfer amount matches requested amount
+3. Recipient matches service wallet
+4. Challenge hash in memo matches the nonce
+
+## Challenge Hash
+
+To bind the payment to the specific request, a challenge hash is computed:
+
+$$
+h = \text{SHA-256}(\text{recipient} \| \text{amount} \| \text{nonce})
+$$
+
+This hash is included in the transaction memo, allowing the service to verify the payment was made for this specific request.
+
+## SDK Helpers
+
+```typescript
+import { parseX402Response, buildPaymentHeaders, fetchWithPayment } from '@x0-protocol/sdk';
+
+// Option 1: Manual flow
+const paymentRequest = parseX402Response(response);
+const tx = await client.transfer(paymentRequest.recipient, paymentRequest.amount);
+const headers = buildPaymentHeaders(tx.signature, wallet.publicKey);
+
+// Option 2: Automatic flow
+const result = await fetchWithPayment(url, client, {
+  maxAmount: 10_000_000,  // 10 USDC max
+  autoApprove: true
+});
+```
+
+## Security Properties
+
+1. **Replay protection** — Each request has a unique nonce; the challenge hash binds payment to the specific request
+2. **Expiration** — Payment requests expire, preventing agents from paying stale invoices
+3. **Amount verification** — The on-chain transfer amount is verified against the requested amount
+4. **Policy enforcement** — The agent's x0-guard policy still applies to 402 payments, enforcing spend limits

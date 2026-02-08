@@ -1,0 +1,164 @@
+---
+title: "x0-zk-proofs"
+description: "Off-chain WASM library for client-side zero-knowledge proof generation using solana-zk-token-sdk."
+icon: "wand-magic-sparkles"
+---
+
+x0-zk-proofs is a Rust crate compiled to **WebAssembly** for client-side zero-knowledge proof generation. It wraps Solana's `solana-zk-token-sdk` cryptographic primitives and exposes them via `wasm-bindgen` for use in browsers and Node.js.
+
+## Why Off-Chain?
+
+Zero-knowledge proof generation is computationally expensive (elliptic curve operations, multi-exponentiation). Performing this on-chain would exceed Solana's compute unit limits. Instead:
+
+1. **Client generates proof** — Using x0-zk-proofs in WASM (~50ms per proof)
+2. **Client submits proof** — Proof data included in transaction instruction
+3. **On-chain verifier checks** — x0-zk-verifier validates the proof (much cheaper than generation)
+
+## Installation
+
+### npm / yarn
+
+```bash
+npm install @x0-protocol/zk-proofs
+```
+
+### From source
+
+```bash
+cd programs/x0-zk-proofs
+wasm-pack build --target bundler --out-dir ../../sdk/x0-sdk/wasm
+```
+
+## WASM-Exported Functions
+
+### `version()`
+
+Returns the crate version string.
+
+```typescript
+import { version } from '@x0-protocol/zk-proofs';
+console.log(version()); // "0.1.0"
+```
+
+### `generate_pubkey_validity_proof(elgamal_keypair)`
+
+Generates a proof that an ElGamal public key is correctly derived from its secret.
+
+```typescript
+import { generate_pubkey_validity_proof } from '@x0-protocol/zk-proofs';
+
+const keypairBytes: Uint8Array = /* 64-byte ElGamal keypair */;
+const proofData: Uint8Array = generate_pubkey_validity_proof(keypairBytes);
+// proofData is 64 bytes — submit to x0-zk-verifier.verify_pubkey_validity
+```
+
+**Input:** 64-byte ElGamal keypair (32-byte secret + 32-byte public key)  
+**Output:** 64-byte `PubkeyValidityData` proof
+
+### `generate_withdraw_proof(elgamal_keypair, balance_ciphertext, withdraw_amount)`
+
+Generates a proof that a withdrawal is valid against an encrypted balance.
+
+```typescript
+import { generate_withdraw_proof } from '@x0-protocol/zk-proofs';
+
+const proof = generate_withdraw_proof(
+  keypairBytes,           // 64-byte ElGamal keypair
+  ciphertextBytes,        // 64-byte encrypted balance
+  BigInt(1000000)          // withdrawal amount
+);
+
+// proof.proofData — Uint8Array, 160 bytes
+// proof.newBalance — BigInt, new decryptable balance
+```
+
+**Input:**
+- `elgamal_keypair` — 64-byte keypair
+- `balance_ciphertext` — 64-byte ElGamal ciphertext of current balance
+- `withdraw_amount` — `u64` amount to withdraw
+
+**Output:** Object with `proofData` (160 bytes) and `newBalance` (BigInt)
+
+### `generate_zero_balance_proof(elgamal_keypair, balance_ciphertext)`
+
+Generates a proof that an encrypted balance is zero.
+
+```typescript
+import { generate_zero_balance_proof } from '@x0-protocol/zk-proofs';
+
+const proofData: Uint8Array = generate_zero_balance_proof(
+  keypairBytes,
+  ciphertextBytes
+);
+// proofData is 96 bytes
+```
+
+### `decrypt_elgamal_u64(elgamal_keypair, ciphertext)`
+
+Decrypts an ElGamal ciphertext to recover the underlying `u64` value.
+
+```typescript
+import { decrypt_elgamal_u64 } from '@x0-protocol/zk-proofs';
+
+const amount: bigint = decrypt_elgamal_u64(keypairBytes, ciphertextBytes);
+```
+
+## Internal Architecture
+
+```
+x0-zk-proofs/
+├── src/
+│   ├── lib.rs       # WASM entry points (#[wasm_bindgen])
+│   ├── proofs.rs    # Proof generation using solana-zk-token-sdk types
+│   ├── elgamal.rs   # ElGamal keypair reconstruction & decryption
+│   └── utils.rs     # Error types, input validation
+└── tests/
+    └── integration_tests.rs  # 14 WASM integration tests
+```
+
+### Dependencies
+
+| Crate | Purpose |
+|---|---|
+| `solana-zk-token-sdk` | ElGamal encryption, proof generation types |
+| `wasm-bindgen` | Rust ↔ JavaScript FFI |
+| `js-sys` | JavaScript object construction (for return types) |
+| `bytemuck` | Zero-copy proof data serialization |
+
+### Error Handling
+
+All functions return JavaScript errors via `JsValue`. The internal error type:
+
+```rust
+pub enum X0Error {
+    InvalidKeypair(String),
+    InvalidCiphertext(String),
+    ProofGenerationFailed(String),
+    InvalidLength { expected: usize, actual: usize },
+}
+```
+
+## SDK Integration
+
+The TypeScript SDK wraps these WASM functions in a higher-level API:
+
+```typescript
+import { initWasm, generatePubkeyValidityProofWasm } from '@x0-protocol/sdk';
+
+// Initialize WASM module (once per session)
+await initWasm();
+
+// Generate proof
+const proofData = generatePubkeyValidityProofWasm(keypairBytes);
+```
+
+See the [SDK ZK Verifier Client](/sdk/zk-verifier) for the full integration guide.
+
+## Test Coverage
+
+The crate includes **47 native unit tests** and **14 WASM integration tests** covering:
+
+- ElGamal keypair reconstruction and roundtrip encryption/decryption
+- Proof generation for all four proof types
+- Edge cases: zero amounts, maximum amounts, wrong keypairs, invalid inputs
+- Full lifecycle: keypair generation → proof creation → bytemuck serialization

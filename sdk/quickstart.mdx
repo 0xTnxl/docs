@@ -1,0 +1,138 @@
+---
+title: "Quick Start"
+description: "Get up and running with the x0 Protocol SDK in 5 minutes."
+icon: "rocket"
+---
+
+## Create a Client
+
+```typescript
+import { createDevnetClient } from '@x0-protocol/sdk';
+
+const client = createDevnetClient(wallet);
+```
+
+## Set Up an Agent Policy
+
+Every agent needs a policy that defines its spending limits, whitelist, and privacy settings:
+
+```typescript
+import { PublicKey } from '@solana/web3.js';
+import BN from 'bn.js';
+
+const agentKeypair = Keypair.generate();
+
+const { signature, policyAddress } = await client.initializePolicy(
+  agentKeypair.publicKey,
+  {
+    dailyLimit: new BN(100_000_000), // 100 USDC
+    whitelist: { mode: 0 },         // No whitelist
+    privacy: { level: 0 },          // Public transfers
+  }
+);
+
+console.log('Policy created:', policyAddress.toBase58());
+```
+
+## Make a Transfer
+
+```typescript
+const recipient = new PublicKey('Recipient...');
+const signature = await client.transfer(
+  recipient,
+  new BN(5_000_000), // 5 USDC
+);
+console.log('Transfer:', signature);
+```
+
+## Check Your Balance
+
+```typescript
+const balance = await client.getMyBalance();
+console.log('Balance:', balance.toString());
+```
+
+## Query Your Policy
+
+```typescript
+const policy = await client.getMyPolicy();
+if (policy) {
+  console.log('Daily limit:', policy.dailyLimit.toString());
+  console.log('Current 24h spend:', policy.currentSpend.toString());
+  console.log('Active:', policy.isActive);
+}
+```
+
+## Full Example
+
+```typescript
+import { createDevnetClient, PolicyManager } from '@x0-protocol/sdk';
+import { Keypair, PublicKey } from '@solana/web3.js';
+import BN from 'bn.js';
+
+async function main() {
+  // 1. Create client
+  const wallet = loadWallet(); // your wallet adapter
+  const client = createDevnetClient(wallet);
+
+  // 2. Create agent with conservative policy
+  const agent = Keypair.generate();
+  const preset = client.policy.getConservativePreset();
+
+  const { policyAddress } = await client.initializePolicy(
+    agent.publicKey,
+    {
+      ...preset,
+      whitelist: { mode: 0 },
+      privacy: { level: 0 },
+    }
+  );
+
+  // 3. Register agent in the registry
+  const { registryAddress } = await client.registerAgent({
+    endpoint: 'https://my-agent.example.com/api',
+    capabilities: [{ type: 'text_generation', metadata: '{}' }],
+  });
+
+  // 4. Make a payment
+  const recipient = new PublicKey('Seller...');
+  await client.transfer(recipient, new BN(10_000_000));
+
+  // 5. Check reputation
+  const rep = await client.getAgentReputation(policyAddress);
+  console.log(`Score: ${rep.score / 100}%  Tier: ${rep.tier}`);
+}
+
+main().catch(console.error);
+```
+
+## Policy Presets
+
+The SDK ships with three policy presets for common use cases:
+
+| Preset | Daily Limit | Per-TX Limit | Use Case |
+|---|---|---|---|
+| `getConservativePreset()` | 100 USDC | 10 USDC | Low-risk automation |
+| `getModeratePreset()` | 1,000 USDC | 100 USDC | Standard agent operations |
+| `getPermissivePreset()` | 10,000 USDC | 1,000 USDC | High-throughput services |
+
+```typescript
+const preset = client.policy.getModeratePreset();
+```
+
+## What's Next
+
+<CardGroup cols={2}>
+  <Card title="X0Client" icon="desktop" href="/sdk/client">
+    Full client API reference
+  </Card>
+  <Card title="Policy Management" icon="shield" href="/sdk/policy">
+    Configure agent policies
+  </Card>
+  <Card title="Escrow" icon="handshake" href="/sdk/escrow">
+    Build agent-to-agent payments
+  </Card>
+  <Card title="Confidential Transfers" icon="eye-slash" href="/sdk/confidential">
+    Enable privacy-preserving payments
+  </Card>
+</CardGroup>

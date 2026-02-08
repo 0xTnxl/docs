@@ -1,0 +1,126 @@
+---
+title: "Installation"
+description: "Install and configure the x0 Protocol SDK for your TypeScript project."
+icon: "download"
+---
+
+## Install
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @x0-protocol/sdk
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add @x0-protocol/sdk
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add @x0-protocol/sdk
+    ```
+  </Tab>
+</Tabs>
+
+## Peer Dependencies
+
+The SDK requires the following Solana packages:
+
+```bash
+npm install @solana/web3.js @coral-xyz/anchor bn.js
+```
+
+| Package | Version | Purpose |
+|---|---|---|
+| `@solana/web3.js` | `^1.87.0` | Solana RPC and transaction primitives |
+| `@coral-xyz/anchor` | `^0.30.1` | IDL deserialization and instruction building |
+| `bn.js` | `^5.2.0` | Arbitrary-precision integers for token amounts |
+
+## WASM Module (Optional)
+
+For zero-knowledge proof generation in the browser or Node.js:
+
+```bash
+npm install @x0-protocol/zk-proofs-wasm
+```
+
+The WASM module is loaded lazily — it's only initialized when you call a ZK proof function. No additional configuration is needed.
+
+## TypeScript Configuration
+
+The SDK ships with full TypeScript declarations. Recommended `tsconfig.json` settings:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true
+  }
+}
+```
+
+## Environment Setup
+
+<Tabs>
+  <Tab title="Devnet">
+    ```typescript
+    import { createDevnetClient } from '@x0-protocol/sdk';
+
+    const client = createDevnetClient(wallet);
+    ```
+  </Tab>
+  <Tab title="Mainnet">
+    ```typescript
+    import { createMainnetClient } from '@x0-protocol/sdk';
+
+    const client = createMainnetClient(wallet, 'https://your-rpc.com');
+    ```
+  </Tab>
+  <Tab title="Custom">
+    ```typescript
+    import { createX0Client } from '@x0-protocol/sdk';
+    import { Connection, clusterApiUrl } from '@solana/web3.js';
+
+    const client = createX0Client({
+      connection: new Connection(clusterApiUrl('devnet')),
+      wallet: walletAdapter,
+      commitment: 'confirmed',
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Package Exports
+
+The SDK exports everything from a single entry point:
+
+```typescript
+// All managers, types, constants, and utilities
+import {
+  X0Client,
+  PolicyManager,
+  EscrowManager,
+  RegistryManager,
+  ReputationManager,
+  TokenClient,
+  WrapperClient,
+  ConfidentialClient,
+  ZkVerifierClient,
+  // types
+  AgentPolicyConfig,
+  EscrowAccount,
+  AgentRegistryEntry,
+  // constants
+  X0_GUARD_PROGRAM_ID,
+  PROTOCOL_FEE_BASIS_POINTS,
+  // utilities
+  calculateProtocolFee,
+  deriveAgentPolicyPda,
+  // ... and more
+} from '@x0-protocol/sdk';
+```

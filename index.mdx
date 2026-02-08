@@ -1,97 +1,60 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "x0 Protocol"
+description: "Autonomous agent payment infrastructure on Solana — policy-enforced transfers, conditional escrow, on-chain reputation, and zero-knowledge proof verification."
+mode: "wide"
 ---
 
-## Setting up
+## What is x0?
 
-Get your documentation site up and running in minutes.
+x0 is a suite of **eight interoperating Solana programs** and a **TypeScript SDK** that enables autonomous AI agents to transact with programmable guardrails. Every transfer is policy-enforced at the Token-2022 level via transfer hooks, ensuring agents can never exceed their configured spend limits — even if their signing keys are compromised.
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+The protocol employs the **HTTP 402 Payment Required** flow for machine-to-machine commerce: an agent discovers a service, negotiates price on-chain, pays via policy-gated transfer, and receives a cryptographic receipt — all without human intervention.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<Columns cols={3}>
+  <Card title="Protocol Specifications" icon="book" href="/protocol/architecture">
+    Deep technical reference for all eight on-chain programs, state accounts, instructions, and cryptographic primitives.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="SDK for Developers" icon="code" href="/sdk/installation">
+    TypeScript SDK with instruction builders, PDA derivation, Blink generation, x402 helpers, and confidential transfer support.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Security Analysis" icon="shield" href="/security/threat-model">
+    Threat model, attack vector mitigations, formal invariants, and audit status.
   </Card>
 </Columns>
 
-## Create beautiful pages
+---
 
-Everything you need to create world-class documentation.
+## Architecture at a Glance
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+The protocol consists of three layers:
 
-## Need inspiration?
+<Steps>
+  <Step title="Policy Enforcement Layer">
+    **x0-guard** acts as a Token-2022 transfer hook. Every token transfer is intercepted and validated against the agent's `AgentPolicy` — checking daily spend limits, rolling window budgets, whitelist membership, and privacy mode. Transfers that violate policy are rejected at the Solana runtime level.
+  </Step>
+  <Step title="Service Layer">
+    **x0-escrow**, **x0-registry**, **x0-reputation**, and **x0-wrapper** provide the transactional infrastructure: conditional escrow with dispute resolution, agent discovery with capability metadata, on-chain reputation scoring, and a 1:1 USDC-backed stablecoin wrapper (x0-USD) with timelocked governance.
+  </Step>
+  <Step title="Cryptographic Layer">
+    **x0-token**, **x0-zk-verifier**, and the off-chain **x0-zk-proofs** WASM library handle Token-2022 mint management, confidential transfers via Twisted ElGamal encryption, and on-chain Groth16 proof verification for balance privacy.
+  </Step>
+</Steps>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
+---
+
+## Program Map
+
+| Program | Address | Purpose |
+|---|---|---|
+| x0-guard | `2uYGW3fQUGfhrwVbkupdasXBpRPfGYBGTLUdaPTXU9vP` | Policy enforcement via transfer hook |
+| x0-token | `EHHTCSyGkmnsBhGsvCmLzKgcSxtsN31ScrfiwcCbjHci` | Token-2022 mint with transfer fees + confidential transfers |
+| x0-escrow | `AhaDyVm8LBxpUwFdArA37LnHvNx6cNWe3KAiy8zGqhHF` | Conditional escrow with dispute resolution |
+| x0-registry | `Bebty49EPhFoANKDw7TqLQ2bX61ackNav5iNkj36eVJo` | Agent discovery and capability registry |
+| x0-reputation | `FfzkTWRGAJQPDePbujZdEhKHqC1UpqvDrpv4TEiWpx6y` | On-chain reputation oracle |
+| x0-wrapper | `EomiXBbg94Smu4ipDoJtuguazcd1KjLFDFJt2fCabvJ8` | USDC → x0-USD 1:1 wrapper with governance |
+| x0-zk-verifier | `zQWSrznKgcK8aHA4ry7xbSCdP36FqgUHj766YM3pwre` | On-chain zero-knowledge proof verification |
+| x0-common | *(library)* | Shared constants, errors, events, state types |
+
+<Card title="Read the Whitepaper" icon="file-lines" href="https://github.com/x0-project/x0-01/blob/main/whitepaper.pdf">
+  Full formal specification with mathematical proofs, security analysis, and protocol economics.
 </Card>

@@ -1,0 +1,219 @@
+---
+title: "x402 & Blinks"
+description: "HTTP 402 payment protocol and Solana Actions (Blinks) for human-in-the-loop approval."
+icon: "credit-card"
+---
+
+## x402 Functions
+
+### Parsing 402 Responses
+
+```typescript
+import { parseX402Response, parseX402FromResponse } from '@x0-protocol/sdk';
+
+// From raw status + headers
+const request = parseX402Response(statusCode, headers);
+
+// From fetch Response object
+const request = await parseX402FromResponse(response);
+```
+
+**Returns:** `X402PaymentRequest | null`
+
+| Field | Type | Description |
+|---|---|---|
+| `protocol` | `string` | `"x0-01"` |
+| `version` | `string` | `"2.0"` |
+| `mint` | `PublicKey` | Token mint for payment |
+| `amount` | `BN` | Required payment amount |
+| `recipient` | `PublicKey` | Service's receiving wallet |
+| `memoHash` | `Uint8Array` | SHA-256 of resource identifier |
+| `network` | `string` | Solana network |
+| `challenge` | `Uint8Array` | Unique challenge nonce |
+| `expiresAt` | `number` | Expiration timestamp |
+| `escrow?` | `EscrowParams` | Optional escrow configuration |
+
+### Building Headers (Server-Side)
+
+```typescript
+import { buildX402Header, buildX402ResponseHeaders } from '@x0-protocol/sdk';
+
+// Base64-encoded header string
+const header = buildX402Header({
+  recipient: servicePubkey,
+  amount: new BN(5_000_000),
+  resource: '/api/v1/generate',
+  memo: 'AI generation request',
+  expiresAt: Math.floor(Date.now() / 1000) + 300,
+});
+
+// Full headers object
+const headers = buildX402ResponseHeaders({ ... });
+```
+
+### Payment Proof (Client-Side)
+
+```typescript
+import { buildPaymentProofHeader, buildPaymentHeaders } from '@x0-protocol/sdk';
+
+// Single header string
+const proofHeader = buildPaymentProofHeader(txSignature, slot, payerPubkey);
+
+// Full headers object
+const headers = buildPaymentHeaders(txSignature, slot, payerPubkey);
+```
+
+### Verification (Server-Side)
+
+```typescript
+import { verifyPaymentProof } from '@x0-protocol/sdk';
+
+const result = await verifyPaymentProof(
+  connection,
+  proofHeader,
+  expectedRecipient,
+  expectedAmount
+);
+// { valid: boolean, signature?, payer?, actualAmount?, error? }
+```
+
+### Payment Receipt
+
+```typescript
+import { generatePaymentReceipt } from '@x0-protocol/sdk';
+
+const receipt = generatePaymentReceipt({
+  signature: txSig,
+  slot,
+  payer: payerPubkey,
+  recipient: servicePubkey,
+  amount: new BN(5_000_000),
+  resource: '/api/v1/generate',
+});
+```
+
+### Express Middleware
+
+```typescript
+import { createX402Middleware } from '@x0-protocol/sdk';
+
+const middleware = createX402Middleware(
+  connection,
+  servicePubkey,
+  (req) => {
+    // Return required amount based on the request, or null for free
+    if (req.path.startsWith('/api/premium')) {
+      return new BN(5_000_000);
+    }
+    return null;
+  }
+);
+
+app.use('/api', middleware);
+```
+
+### Auto-Pay Client
+
+```typescript
+import { fetchWithPayment } from '@x0-protocol/sdk';
+
+const response = await fetchWithPayment(
+  'https://api.service.com/generate',
+  { method: 'POST', body: JSON.stringify({ prompt: 'Hello' }) },
+  async (paymentRequest) => {
+    // Pay and return receipt
+    const sig = await client.transfer(paymentRequest.recipient, paymentRequest.amount);
+    return { signature: sig, slot: 12345, payer: wallet.publicKey };
+  }
+);
+```
+
+---
+
+## Blink Functions
+
+### Generation
+
+```typescript
+import {
+  generateTransferBlink,
+  generateEscrowReleaseBlink,
+  generatePolicyUpdateBlink
+} from '@x0-protocol/sdk';
+
+const blink = generateTransferBlink({
+  policyId: policyPda,
+  owner: ownerPubkey,
+  recipient: recipientPubkey,
+  amount: new BN(50_000_000),
+  description: 'Large payment requires approval',
+  memo: 'Infrastructure cost',
+  expiresIn: 900,  // 15 minutes (default)
+});
+```
+
+### URL Generation
+
+```typescript
+import { generateBlinkUrl, generateActionsUrl } from '@x0-protocol/sdk';
+
+// Web URL
+const url = generateBlinkUrl(blink, 'https://my-app.com');
+
+// Solana Actions URL (solana-action: scheme)
+const actionsUrl = generateActionsUrl(blink, 'https://api.my-app.com/actions');
+```
+
+### Validation
+
+```typescript
+import { validateBlink, isBlinkExpiredFromBlink } from '@x0-protocol/sdk';
+
+if (!validateBlink(data)) {
+  throw new Error('Invalid blink');
+}
+
+if (isBlinkExpiredFromBlink(blink)) {
+  throw new Error('Blink expired');
+}
+```
+
+### Transaction Building
+
+```typescript
+import { buildBlinkApprovalTransaction, serializeBlinkTransaction } from '@x0-protocol/sdk';
+
+const tx = buildBlinkApprovalTransaction({
+  blink,
+  instructions: [transferInstruction],
+  feePayer: ownerPubkey,
+  recentBlockhash: blockhash,
+});
+
+// Serialize for wallet delivery
+const serialized = serializeBlinkTransaction(tx);
+```
+
+### Actions Metadata
+
+```typescript
+import { buildActionsMetadata } from '@x0-protocol/sdk';
+
+// GET endpoint response for Blink rendering
+const metadata = buildActionsMetadata(blink);
+// {
+//   icon: "...",
+//   title: "Approve Transfer",
+//   description: "Agent requests 50 USDC transfer...",
+//   label: "Approve",
+//   links: { actions: [...] }
+// }
+```
+
+### QR Code
+
+```typescript
+import { generateQRData } from '@x0-protocol/sdk';
+
+const qrPayload = generateQRData(blink, 'https://api.my-app.com/actions');
+```

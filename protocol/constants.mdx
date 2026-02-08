@@ -1,0 +1,181 @@
+---
+title: "Constants Reference"
+description: "Complete reference of all protocol constants used across x0 on-chain programs."
+icon: "hashtag"
+---
+
+All protocol constants are defined in `x0-common` and shared across every on-chain program. Many are governance-adjustable via the wrapper's timelock mechanism.
+
+## Program IDs
+
+| Constant | Value | Description |
+|---|---|---|
+| `ESCROW_PROGRAM_ID` | `AhaDyVm8LBxpUwFdArA37LnHvNx6cNWe3KAiy8zGqhHF` | x0-escrow program |
+| `GUARD_PROGRAM_ID` | `2uYGW3fQUGfhrwVbkupdasXBpRPfGYBGTLUdaPTXU9vP` | x0-guard program |
+| `REPUTATION_PROGRAM_ID` | `FfzkTWRGAJQPDePbujZdEhKHqC1UpqvDrpv4TEiWpx6y` | x0-reputation program |
+
+## Protocol Identifiers
+
+| Constant | Value | Description |
+|---|---|---|
+| `PROTOCOL_VERSION` | `"2.0"` | Current protocol version |
+| `PROTOCOL_NAME` | `"x0-01"` | Protocol name for x402 headers |
+| `NETWORK_MAINNET` | `"solana-mainnet"` | Mainnet network identifier |
+| `NETWORK_DEVNET` | `"solana-devnet"` | Devnet network identifier |
+| `NETWORK_LOCALNET` | `"solana-localnet"` | Localnet network identifier |
+
+## Fee Configuration
+
+| Constant | Value | Description |
+|---|---|---|
+| `PROTOCOL_FEE_BASIS_POINTS` | `80` | 0.8% protocol fee via TransferFee extension |
+| `MAX_PROTOCOL_FEE_BASIS_POINTS` | `1000` | 10% governance safety cap |
+| `MIN_PROTOCOL_FEE` | `1` | 1 micro-unit minimum fee (prevents dust avoidance) |
+| `FEE_DENOMINATOR` | `10,000` | Basis points denominator |
+
+## Time Constants
+
+| Constant | Value | Human-Readable | Description |
+|---|---|---|---|
+| `ROLLING_WINDOW_SECONDS` | `86,400` | 24 hours | Spending window duration |
+| `MAX_ROLLING_WINDOW_ENTRIES` | `144` | ~10 min intervals | Max entries in the rolling window |
+| `BLINK_EXPIRY_SECONDS` | `900` | 15 minutes | Blink expiration time |
+| `DEFAULT_ESCROW_TIMEOUT_SECONDS` | `259,200` | 72 hours | Default escrow timeout |
+| `MIN_ESCROW_TIMEOUT_SECONDS` | `3,600` | 1 hour | Minimum escrow timeout |
+| `MAX_ESCROW_TIMEOUT_SECONDS` | `2,592,000` | 30 days | Maximum escrow timeout |
+
+## Slot-Based Time Constants
+
+These constants protect against clock manipulation by using slot numbers instead of (or alongside) Unix timestamps.
+
+| Constant | Value | Approx. Time | Description |
+|---|---|---|---|
+| `SLOTS_PER_SECOND` | `2` | — | Conservative estimate (400ms/slot) |
+| `ROLLING_WINDOW_SLOTS` | `216,000` | ~24 hours | Slot-based spending window with buffer |
+| `TIME_CHECK_BUFFER_SLOTS` | `750` | ~5 minutes | Clock skew safety margin |
+| `ESCROW_TIMEOUT_BUFFER_SLOTS` | `1,500` | ~10 minutes | Escrow timeout safety margin |
+
+## Rate Limiting
+
+| Constant | Value | Description |
+|---|---|---|
+| `MAX_BLINKS_PER_HOUR` | `3` | Maximum Blinks per agent per hour |
+| `BLINK_GENERATION_COST_LAMPORTS` | `1,000,000` | 0.001 SOL burned per Blink |
+| `POLICY_UPDATE_COOLDOWN_SLOTS` | `750` | ~5 min between policy updates |
+| `ARBITER_RESOLUTION_DELAY_SLOTS` | `216,000` | ~24 hour delay before arbiter can resolve |
+
+## Policy Limits
+
+| Constant | Value | Human-Readable | Description |
+|---|---|---|---|
+| `MAX_DAILY_LIMIT` | `1,000,000,000,000` | 1M tokens | Maximum daily spending limit |
+| `MIN_DAILY_LIMIT` | `1,000,000` | 1 token | Minimum daily limit |
+| `MIN_TRANSFER_AMOUNT` | `100` | 0.0001 tokens | Dust transfer prevention |
+| `DEFAULT_DAILY_LIMIT` | `100,000,000,000` | 100K tokens | Default limit for new policies |
+
+## Whitelist Configuration
+
+| Constant | Value | Description |
+|---|---|---|
+| `MAX_MERKLE_WHITELIST_SIZE` | `10,000` | Max addresses in Merkle whitelist |
+| `MAX_MERKLE_PROOF_DEPTH` | `14` | log2(10,000) ≈ 14 |
+| `BLOOM_FILTER_SIZE_BYTES` | `4,096` | 4KB for ~1000 items at 1% FP rate |
+| `BLOOM_HASH_COUNT` | `7` | Number of Bloom filter hash functions |
+| `MAX_DOMAIN_PREFIXES` | `100` | Max domain prefixes in Domain mode |
+| `DOMAIN_PREFIX_LENGTH` | `8` | Bytes per domain prefix |
+
+## PDA Seeds
+
+| Constant | Seed | Derivation |
+|---|---|---|
+| `AGENT_POLICY_SEED` | `"agent_policy"` | `[seed, owner.key()]` |
+| `ESCROW_SEED` | `"escrow"` | `[seed, buyer.key(), seller.key(), memo_hash]` |
+| `REGISTRY_SEED` | `"registry"` | `[seed, agent_id.key()]` |
+| `REPUTATION_SEED` | `"reputation"` | `[seed, agent_id.key()]` |
+| `PROTOCOL_CONFIG_SEED` | `"protocol_config"` | `[seed]` |
+| `TREASURY_SEED` | `"treasury"` | `[seed]` |
+| `WRAPPER_CONFIG_SEED` | `"wrapper_config"` | `[seed]` |
+| `WRAPPER_STATS_SEED` | `"wrapper_stats"` | `[seed]` |
+| `WRAPPER_RESERVE_SEED` | `"reserve"` | `[seed, usdc_mint.key()]` |
+| `WRAPPER_MINT_AUTHORITY_SEED` | `"mint_authority"` | `[seed]` |
+| `ADMIN_ACTION_SEED` | `"admin_action"` | `[seed, action_type, nonce]` |
+| `CT_PROOF_CONTEXT_SEED` | `"ct_proof"` | `[seed, proof_type]` |
+
+## Account Size Constants
+
+| Constant | Size (bytes) | Account |
+|---|---|---|
+| `AGENT_POLICY_BASE_SIZE` | 120 | AgentPolicy (base without variable fields) |
+| `SPENDING_ENTRY_SIZE` | 16 | Each SpendingEntry (amount + timestamp) |
+| `MAX_AGENT_POLICY_SIZE` | ~6,680 | AgentPolicy with full rolling window + Bloom filter |
+| `AGENT_REGISTRY_SIZE` | ~5,480 | AgentRegistry entry |
+| `ESCROW_ACCOUNT_SIZE` | ~162 | Escrow account |
+| `REPUTATION_ACCOUNT_SIZE` | ~100 | Reputation account |
+| `WRAPPER_CONFIG_SIZE` | 196 | WrapperConfig |
+| `WRAPPER_STATS_SIZE` | 138 | WrapperStats |
+| `ADMIN_ACTION_SIZE` | 84 | AdminAction |
+
+## Compute Unit Estimates
+
+| Constant | CU | Operation |
+|---|---|---|
+| `CU_PUBLIC_TRANSFER` | `3,400` | Public transfer validation |
+| `CU_CONFIDENTIAL_TRANSFER` | `50,300` | Confidential transfer validation |
+| `CU_ESCROW_CREATION` | `2,800` | Escrow creation |
+| `CU_POLICY_UPDATE` | `1,500` | Policy update |
+| `CU_MERKLE_VERIFY` | `2,000` | Merkle proof verification |
+| `CU_BLOOM_VERIFY` | `800` | Bloom filter verification |
+| `CU_DOMAIN_VERIFY` | `400` | Domain prefix verification |
+
+## Reputation System
+
+| Constant | Value | Description |
+|---|---|---|
+| `REPUTATION_SUCCESS_WEIGHT` | `0.60` | Weight for success rate in score formula |
+| `REPUTATION_RESOLUTION_WEIGHT` | `0.15` | Weight for dispute resolution rate |
+| `REPUTATION_DISPUTE_WEIGHT` | `0.10` | Weight for (1 - dispute rate) |
+| `REPUTATION_FAILURE_WEIGHT` | `0.15` | Weight for (1 - failure rate) |
+| `REPUTATION_DECAY_RATE_BPS` | `100` | 1% monthly decay |
+| `MIN_TRANSACTIONS_FOR_REPUTATION` | `10` | Minimum transactions for reliable score |
+
+## Registry Configuration
+
+| Constant | Value | Description |
+|---|---|---|
+| `REGISTRY_LISTING_FEE_LAMPORTS` | `100,000,000` | 0.1 SOL listing fee |
+| `MAX_ENDPOINT_LENGTH` | `256` | Max endpoint URL length |
+| `MAX_CAPABILITIES_PER_AGENT` | `10` | Max capabilities per agent |
+| `MAX_CAPABILITY_METADATA_LENGTH` | `256` | Max metadata per capability |
+| `MAX_CAPABILITY_TYPE_LENGTH` | `64` | Max capability type string length |
+| `REGISTRY_TTL_SECONDS` | `300` | 5-minute cache TTL |
+
+## Wrapper Configuration
+
+| Constant | Value | Description |
+|---|---|---|
+| `WRAPPER_REDEMPTION_FEE_BPS` | `80` | 0.8% redemption fee |
+| `MIN_WRAPPER_FEE_BPS` | `10` | 0.1% minimum fee |
+| `MAX_WRAPPER_FEE_BPS` | `500` | 5% maximum fee |
+| `MAX_REDEMPTION_PER_TX` | `100,000,000,000` | 100K USDC per transaction |
+| `MAX_DAILY_REDEMPTIONS` | `1,000,000,000,000` | 1M USDC daily |
+| `MIN_RESERVE_RATIO_SCALED` | `10,000` | 1.0x minimum ratio |
+| `RESERVE_WARNING_THRESHOLD` | `10,100` | 1.01x warning threshold |
+| `ADMIN_TIMELOCK_SECONDS` | `172,800` | 48-hour timelock |
+| `MIN_DEPOSIT_AMOUNT` | `1,000,000` | 1 USDC minimum deposit |
+| `MIN_REDEMPTION_AMOUNT` | `1,000,000` | 1 USDC minimum redemption |
+| `WRAPPER_DECIMALS` | `6` | Must match USDC decimals |
+
+## Confidential Transfer Configuration
+
+| Constant | Value | Description |
+|---|---|---|
+| `ELGAMAL_PUBKEY_SIZE` | `32` | Compressed Ristretto point |
+| `DECRYPTABLE_BALANCE_SIZE` | `36` | AES-encrypted decryptable balance |
+| `ELGAMAL_CIPHERTEXT_SIZE` | `64` | Two compressed Ristretto points |
+| `MAX_CONFIDENTIAL_AMOUNT` | `2^48 - 1` | Token-2022 ZK proof limit |
+| `MAX_PENDING_BALANCE_CREDIT_COUNTER` | `65,536` | Max incoming transfers before apply |
+| `PUBKEY_VALIDITY_PROOF_SIZE` | `64` | PubkeyValidityProof data |
+| `ZERO_CIPHERTEXT_PROOF_SIZE` | `96` | ZeroCiphertextProof data |
+| `WITHDRAW_PROOF_SIZE` | `160` | WithdrawProof data |
+| `TRANSFER_PROOF_SIZE` | `288` | TransferProof data (ciphertext validity + range) |
+| `CONFIDENTIAL_ACCOUNT_EXTENSION_SIZE` | `~120` | Account extension additional space |

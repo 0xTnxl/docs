@@ -1,0 +1,139 @@
+---
+title: "Utilities"
+description: "Fee calculation, PDA derivation, hashing, Merkle trees, Bloom filters, and timestamp helpers."
+icon: "wrench"
+---
+
+## Fee Calculation
+
+```typescript
+import { calculateProtocolFee, amountAfterFee } from '@x0-protocol/sdk';
+
+const fee = calculateProtocolFee(new BN(1_000_000));
+// fee = 8000 (0.8%)
+
+const net = amountAfterFee(new BN(1_000_000));
+// net = 992000
+```
+
+## PDA Derivation
+
+All PDA derivation functions return `[PublicKey, number]` (address + bump seed).
+
+```typescript
+import {
+  deriveAgentPolicyPda,
+  deriveEscrowPda,
+  deriveRegistryPda,
+  deriveReputationPda,
+} from '@x0-protocol/sdk';
+
+const [policyPda, policyBump] = deriveAgentPolicyPda(ownerPubkey);
+const [escrowPda, escrowBump] = deriveEscrowPda(buyerPubkey, sellerPubkey, memoHash);
+const [registryPda, registryBump] = deriveRegistryPda(agentPolicyId);
+const [reputationPda, reputationBump] = deriveReputationPda(agentPolicyId);
+```
+
+## Hashing
+
+```typescript
+import { sha256, computeMemoHash, computeChallengeHash } from '@x0-protocol/sdk';
+
+// General SHA-256
+const hash = sha256('hello');           // Uint8Array (32 bytes)
+const hash2 = sha256(Buffer.from(data));
+
+// Memo hash (for escrows and x402)
+const memoHash = computeMemoHash('/api/v1/generate');
+
+// Challenge hash (for x402 payment binding)
+const challengeHash = computeChallengeHash(recipientPubkey, amount, nonce);
+```
+
+## Instruction Discriminator
+
+Build Anchor instruction discriminators for manual instruction construction:
+
+```typescript
+import { getInstructionDiscriminator } from '@x0-protocol/sdk';
+
+const disc = getInstructionDiscriminator('initialize_policy');
+// Buffer (8 bytes) = SHA-256("global:initialize_policy")[0..8]
+```
+
+## Timestamp Utilities
+
+```typescript
+import { now, isValidTimestamp, isBlinkExpired, formatTimestamp } from '@x0-protocol/sdk';
+
+// Current Unix timestamp (seconds)
+const timestamp = now();
+
+// Validate timestamp is within acceptable range
+isValidTimestamp(timestamp);           // true
+isValidTimestamp(timestamp - 100_000); // false (too old)
+
+// Check Blink expiration
+isBlinkExpired(blinkCreatedAt);        // true if > 15 minutes ago
+
+// Format for display
+formatTimestamp(timestamp);            // "2024-01-31T12:00:00.000Z"
+```
+
+## Amount Formatting
+
+```typescript
+import { formatAmount, parseAmount } from '@x0-protocol/sdk';
+
+// BN to human-readable string
+formatAmount(new BN(1_000_000), 6);    // "1.000000"
+formatAmount(new BN(50_000_000), 6);   // "50.000000"
+
+// Human-readable string to BN
+parseAmount('100.5', 6);               // BN(100_500_000)
+```
+
+## Validation
+
+```typescript
+import { validateEndpoint, validateCapabilityType } from '@x0-protocol/sdk';
+
+// Validates URL format and length (max 256 chars)
+validateEndpoint('https://my-agent.com/api'); // ok
+validateEndpoint('not-a-url');                // throws
+
+// Validates capability type string
+validateCapabilityType('text_generation');     // ok
+validateCapabilityType('');                    // throws
+```
+
+## Merkle Trees
+
+```typescript
+import { buildMerkleRoot, generateMerkleProof } from '@x0-protocol/sdk';
+
+const addresses = [addr1, addr2, addr3, addr4];
+
+// Build the Merkle root (32 bytes)
+const root = buildMerkleRoot(addresses);
+
+// Generate a proof for a specific address
+const proof = generateMerkleProof(addresses, addr2);
+// Uint8Array[] | null
+```
+
+## Bloom Filters
+
+```typescript
+import { createBloomFilter, checkBloomFilter } from '@x0-protocol/sdk';
+
+// Create a Bloom filter from addresses
+const bits = createBloomFilter(
+  addresses,
+  4096,  // size in bytes (default)
+  7      // hash count (default)
+);
+
+// Check membership (may have false positives, never false negatives)
+const mayExist = checkBloomFilter(testAddress, bits, 7);
+```

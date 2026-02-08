@@ -1,68 +1,130 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "x0 Protocol",
+  "description": "Autonomous agent payment infrastructure on Solana — policy enforcement, confidential transfers, escrow, reputation, and zero-knowledge proof verification.",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#1E40AF"
   },
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Protocol",
+        "icon": "book",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
               "index",
-              "quickstart",
-              "development"
+              "protocol/architecture",
+              "protocol/programs"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Programs",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "protocol/guard",
+              "protocol/token",
+              "protocol/escrow",
+              "protocol/registry",
+              "protocol/reputation",
+              "protocol/wrapper"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Zero-Knowledge",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "protocol/zk-verifier",
+              "protocol/zk-proofs"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Application Layer",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "protocol/x402",
+              "protocol/blinks"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "protocol/events",
+              "protocol/errors",
+              "protocol/constants"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "SDK",
+        "icon": "code",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Getting Started",
             "pages": [
-              "api-reference/introduction"
+              "sdk/installation",
+              "sdk/quickstart"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Core Clients",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "sdk/client",
+              "sdk/policy",
+              "sdk/escrow",
+              "sdk/registry-reputation"
+            ]
+          },
+          {
+            "group": "Token & Wrapper",
+            "pages": [
+              "sdk/token",
+              "sdk/wrapper",
+              "sdk/confidential"
+            ]
+          },
+          {
+            "group": "ZK & Protocols",
+            "pages": [
+              "sdk/zk-verifier",
+              "sdk/x402-blinks"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "sdk/utilities",
+              "sdk/types"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Security",
+        "icon": "shield",
+        "groups": [
+          {
+            "group": "Security",
+            "pages": [
+              "security/threat-model",
+              "security/attack-vectors",
+              "security/invariants",
+              "security/audit"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Links",
+        "icon": "link",
+        "groups": [
+          {
+            "group": "Useful Links",
+            "pages": [
+              "links/resources"
             ]
           }
         ]
@@ -71,14 +133,14 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
+          "anchor": "GitHub",
+          "href": "https://github.com/x0-project/x0-01",
+          "icon": "github"
         },
         {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
+          "anchor": "Whitepaper",
+          "href": "https://github.com/x0-project/x0-01/blob/main/whitepaper.pdf",
+          "icon": "file-lines"
         }
       ]
     }
@@ -90,33 +152,31 @@
   "navbar": {
     "links": [
       {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "type": "github",
+        "href": "https://github.com/x0-project/x0-01"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
+    ]
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/x0-project/x0-01",
+      "x": "https://x.com/x0protocol"
     }
+  },
+  "metadata": {
+    "timestamp": true
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs"
   }
 }

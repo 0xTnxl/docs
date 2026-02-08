@@ -1,0 +1,295 @@
+---
+title: "X0Client"
+description: "Complete API reference for the main X0Client class — the unified entry point for all protocol operations."
+icon: "desktop"
+---
+
+`X0Client` is the primary interface to the x0 protocol. It wraps all specialized managers and provides high-level convenience methods.
+
+## Construction
+
+```typescript
+import { createX0Client, createDevnetClient, createMainnetClient } from '@x0-protocol/sdk';
+```
+
+### `createX0Client(config)`
+
+```typescript
+const client = createX0Client({
+  connection,           // Connection (required)
+  wallet,               // { publicKey, signTransaction } (optional)
+  commitment,           // 'confirmed' | 'finalized' (optional)
+  confirmOptions,       // ConfirmOptions (optional)
+  guardProgramId,       // PublicKey override (optional)
+  tokenProgramId,       // PublicKey override (optional)
+  escrowProgramId,      // PublicKey override (optional)
+  registryProgramId,    // PublicKey override (optional)
+  reputationProgramId,  // PublicKey override (optional)
+  settlementMint,       // Token-2022 mint (optional)
+});
+```
+
+### `createDevnetClient(wallet?)`
+
+Creates a client pre-configured for Solana devnet.
+
+### `createMainnetClient(wallet?, rpcUrl?)`
+
+Creates a client pre-configured for Solana mainnet-beta.
+
+## Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `connection` | `Connection` | Solana RPC connection |
+| `commitment` | `Commitment` | Transaction commitment level |
+| `policy` | `PolicyManager` | Agent policy operations |
+| `escrow` | `EscrowManager` | Escrow operations |
+| `registry` | `RegistryManager` | Agent registry operations |
+| `reputation` | `ReputationManager` | Reputation operations |
+| `settlementMint` | `PublicKey \| null` | Token-2022 mint |
+| `walletPublicKey` | `PublicKey \| null` | Connected wallet's public key |
+
+## Wallet Management
+
+### `connectWallet(wallet)`
+
+Connect or switch the active wallet.
+
+```typescript
+client.connectWallet({
+  publicKey: wallet.publicKey,
+  signTransaction: wallet.signTransaction,
+  signAllTransactions: wallet.signAllTransactions,
+});
+```
+
+### `setSettlementMint(mint)`
+
+Set the Token-2022 mint used for transfers.
+
+```typescript
+client.setSettlementMint(x0UsdMint);
+```
+
+## Transaction Execution
+
+### `sendTransaction(instructions, signers?, options?)`
+
+Build, sign, and submit a transaction.
+
+```typescript
+const signature = await client.sendTransaction(
+  [instruction1, instruction2],
+  [additionalSigner],
+  { skipPreflight: false }
+);
+```
+
+**Returns:** Transaction signature string.
+
+### `simulateTransaction(instructions)`
+
+Simulate a transaction without submitting.
+
+```typescript
+const result = await client.simulateTransaction([instruction]);
+// { success: boolean, logs: string[], unitsConsumed?: number, error?: string }
+```
+
+## Policy Operations
+
+### `initializePolicy(agentSigner, config)`
+
+Create a new agent policy.
+
+```typescript
+const { signature, policyAddress } = await client.initializePolicy(
+  agentPublicKey,
+  {
+    dailyLimit: new BN(100_000_000),
+    whitelist: { mode: 0 },
+    privacy: { level: 0 },
+  }
+);
+```
+
+### `getMyPolicy()`
+
+Fetch the connected wallet's policy.
+
+```typescript
+const policy = await client.getMyPolicy();
+```
+
+**Returns:** `AgentPolicyAccount | null`
+
+### `updatePolicy(updates)`
+
+Update an existing policy.
+
+```typescript
+await client.updatePolicy({
+  dailyLimit: new BN(500_000_000),
+});
+```
+
+### `rotateAgentSigner(newSigner)`
+
+Replace the agent's signing key.
+
+```typescript
+await client.rotateAgentSigner(newAgentPublicKey);
+```
+
+### `revokeAgentAuthority()`
+
+Kill switch — permanently disable the agent.
+
+```typescript
+await client.revokeAgentAuthority();
+```
+
+## Escrow Operations
+
+### `createEscrow(params)`
+
+```typescript
+const { signature, escrowAddress } = await client.createEscrow({
+  buyer: buyerPublicKey,
+  seller: sellerPublicKey,
+  amount: new BN(50_000_000),
+  memo: 'Code review service',
+  mint: x0UsdMint,
+});
+```
+
+### `releaseEscrow(escrowAddress)`
+
+Release funds to the seller (buyer only).
+
+### `initiateDispute(escrowAddress, reason)`
+
+Open a dispute with evidence.
+
+## Registry Operations
+
+### `registerAgent(params)`
+
+```typescript
+const { registryAddress } = await client.registerAgent({
+  endpoint: 'https://agent.example.com/api',
+  capabilities: [
+    { type: 'text_generation', metadata: '{"model":"gpt-4"}' },
+  ],
+});
+```
+
+### `updateRegistry(updates)`
+
+```typescript
+await client.updateRegistry({
+  endpoint: 'https://new-endpoint.example.com/api',
+});
+```
+
+### `findAgents(capType)`
+
+```typescript
+const agents = await client.findAgents('text_generation');
+```
+
+**Returns:** `AgentRegistryEntry[]`
+
+## Reputation Operations
+
+### `getAgentReputation(agentPolicyId)`
+
+```typescript
+const { account, score, tier } = await client.getAgentReputation(policyPda);
+// score: 0–10000 (divide by 100 for percentage)
+// tier: 'legendary' | 'excellent' | 'good' | 'fair' | 'poor' | 'untrusted'
+```
+
+### `getTopAgents(limit?)`
+
+```typescript
+const top = await client.getTopAgents(10);
+```
+
+## Transfer Operations
+
+### `transfer(recipient, amount, agentSigner?)`
+
+Execute a token transfer through the x0-guard policy.
+
+```typescript
+const sig = await client.transfer(recipientPubkey, new BN(1_000_000));
+```
+
+### `getBalance(owner)`
+
+```typescript
+const balance = await client.getBalance(ownerPubkey);
+```
+
+### `getMyBalance()`
+
+```typescript
+const balance = await client.getMyBalance();
+```
+
+### `getProtocolFee(amount)`
+
+Calculate the protocol fee for a given amount.
+
+```typescript
+const fee = client.getProtocolFee(new BN(1_000_000));
+// fee = 8000 (0.8%)
+```
+
+## x402 & Blink Operations
+
+### `fetchWithPayment(url, options?)`
+
+Fetch a URL with automatic HTTP 402 payment handling.
+
+```typescript
+const response = await client.fetchWithPayment('https://api.service.com/generate');
+```
+
+### `generateTransferApprovalBlink(params)`
+
+Generate a Blink for human approval of a transfer.
+
+```typescript
+const blink = client.generateTransferApprovalBlink({
+  recipient: sellerPubkey,
+  amount: new BN(50_000_000),
+  description: 'Large payment requires approval',
+});
+```
+
+### `getBlinkUrl(blink, baseUrl)`
+
+```typescript
+const url = client.getBlinkUrl(blink, 'https://my-app.com');
+```
+
+## PDA Derivation
+
+### `derivePDAs(owner)`
+
+Derive all PDA addresses for a given owner.
+
+```typescript
+const { policy, registry, reputation } = client.derivePDAs(ownerPubkey);
+```
+
+### `getTokenAddress(owner)`
+
+Get the associated token address for the settlement mint.
+
+```typescript
+const ata = client.getTokenAddress(ownerPubkey);
+```

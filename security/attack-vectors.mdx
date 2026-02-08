@@ -1,0 +1,168 @@
+---
+title: "Attack Vectors"
+description: "Known attack vectors, mitigations, and residual risks for the x0 protocol."
+icon: "crosshairs"
+---
+
+## 1. Compromised Agent Key
+
+**Attack:** An attacker gains control of an agent's private key and attempts to drain the owner's funds.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Daily spend limit | Agent cannot exceed `daily_limit` within a rolling 24-hour window |
+| Per-transaction limit | Each transfer is capped at `maxSingleTransaction` |
+| Whitelist enforcement | Transfers restricted to pre-approved recipients (Merkle/Bloom/Domain) |
+| Kill switch | Owner can call `revokeAgentAuthority()` to instantly disable the agent |
+| Delegation model | Agent is a delegate, not the account owner — cannot close accounts or change authorities |
+| Bound token account | Agent can only transfer from the specific token account bound to the policy |
+
+**Residual risk:** Attacker can spend up to the daily limit before the owner notices. Mitigation: set conservative limits and monitor `TransferValidated` events.
+
+---
+
+## 2. Self-Delegation Attack
+
+**Attack:** Owner sets `agent_signer = owner`, bypassing the delegation model.
+
+**Mitigation:** The guard checks `owner != agent_signer` and rejects with `SelfDelegationNotAllowed` (0x111A).
+
+---
+
+## 3. Token Account Substitution
+
+**Attack:** Agent creates a new token account and tries to transfer from it, bypassing the bound account.
+
+**Mitigation:** The guard validates that the source token account matches `boundTokenAccount` in the policy. Mismatch triggers `BoundTokenAccountMismatch` (0x111B).
+
+---
+
+## 4. Sybil Attack on Registry
+
+**Attack:** Attacker registers many fake agents to dominate registry discovery.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Listing fee | `REGISTRY_LISTING_FEE_LAMPORTS = 100,000,000` (0.1 SOL per registration) |
+| Reputation requirement | Consumers can filter by reputation score (`meetsReputationRequirement`) |
+| Reputation decay | Inactive fake agents lose reputation at 1%/month |
+
+**Residual risk:** A well-funded attacker can register many agents. Mitigation: consumers should set minimum reputation thresholds when discovering agents.
+
+---
+
+## 5. Escrow Griefing
+
+**Attack:** Buyer creates an escrow, seller delivers, but buyer refuses to release and initiates a frivolous dispute.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Auto-release timeout | After escrow timeout, seller can claim via `claimAutoRelease` |
+| Reputation impact | Buyer's reputation score decreases on disputed transactions |
+| Dispute evidence | Disputes require an evidence hash; arbiter can evaluate |
+
+---
+
+## 6. Arbiter Collusion
+
+**Attack:** Arbiter colludes with one party to immediately resolve a dispute unfairly.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Resolution delay | `ARBITER_RESOLUTION_DELAY_SLOTS = 216,000` (~24 hours after dispute initiation) |
+| Evidence requirement | `DisputeEvidenceRequired` error if no evidence submitted |
+| Optional arbiter | Escrows can be created without an arbiter (relies on timeout/auto-release) |
+
+---
+
+## 7. Reserve Drain (Wrapper)
+
+**Attack:** Attacker exploits the wrapper to redeem more USDC than deposited, draining the reserve.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Reserve invariant | On-chain check: `reserve_balance >= outstanding_supply` on every operation |
+| Per-transaction cap | `MAX_REDEMPTION_PER_TX = 100,000 USDC` |
+| Daily redemption limit | `MAX_DAILY_REDEMPTIONS = 1,000,000 USDC` |
+| Minimum deposit/redemption | `MIN_DEPOSIT_AMOUNT = MIN_REDEMPTION_AMOUNT = 1 USDC` |
+| Reserve alerts | `ReserveAlert` events emitted when ratio drops below 1.01 (Warning) or 1.0 (Critical) |
+| Emergency pause | Admin can instantly pause all wrapper operations |
+
+---
+
+## 8. Transfer Hook Configuration Attack
+
+**Attack:** Change the transfer hook program on the mint to bypass x0-guard.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Initialization check | `ExtraMetasAlreadyInitialized` error prevents re-initialization |
+| Authority check | Only the mint authority can configure extra account metas |
+| Immutable hook | Transfer hook program is set at mint initialization and cannot be changed |
+
+---
+
+## 9. Governance Attack (Wrapper)
+
+**Attack:** Compromised admin executes malicious fee change, emergency withdrawal, or admin transfer.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| 48h timelock | `ADMIN_TIMELOCK_SECONDS = 172,800` (all actions except emergency pause) |
+| On-chain visibility | `AdminActionScheduled` event emitted for all pending actions |
+| Cancellation | Any guardian can cancel a pending action before execution |
+| 2-step admin transfer | New admin must actively accept (`buildAcceptAdminTransferInstruction`) |
+| Fee bounds | `MIN_WRAPPER_FEE_BPS = 10` to `MAX_WRAPPER_FEE_BPS = 500` |
+
+---
+
+## 10. Confidential Transfer Front-Running
+
+**Attack:** Attacker observes a pending confidential transfer and attempts to front-run or extract information.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| ElGamal encryption | Transfer amounts are encrypted; only sender, recipient, and optional auditor know the amount |
+| ZK proofs | Range proofs ensure amounts are non-negative without revealing values |
+| Proof freshness | Proof contexts expire after 5 minutes (`PROOF_CONTEXT_FRESHNESS_SECONDS = 300`) |
+| Amount limit | $\text{max} = 2^{48} - 1$ ensures efficient proof generation |
+
+**Residual risk:** Transaction metadata (sender, recipient, timing) is still visible on-chain. Only amounts are hidden.
+
+---
+
+## 11. Policy Update Spam
+
+**Attack:** Attacker rapidly updates policy parameters to cause state confusion.
+
+**Mitigation:** `POLICY_UPDATE_COOLDOWN_SLOTS = 750` (~5 minutes) between policy updates. Error: `PolicyUpdateTooFrequent` (0x1140).
+
+---
+
+## 12. Dust Transfer Spam
+
+**Attack:** Flood the protocol with micro-transfers to consume compute units or fill rolling windows.
+
+**Mitigations:**
+
+| Control | Mechanism |
+|---|---|
+| Minimum transfer | `MIN_TRANSFER_AMOUNT = 100` micro-units (~0.0001 tokens) |
+| Minimum fee | `MIN_PROTOCOL_FEE = 1` micro-unit per transfer |
+| Rolling window cap | `MAX_ROLLING_WINDOW_ENTRIES = 144` entries per 24-hour window |

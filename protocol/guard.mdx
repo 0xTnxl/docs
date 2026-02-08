@@ -1,0 +1,195 @@
+---
+title: "x0-guard"
+description: "Policy enforcement layer — transfer hook validation, rolling window spend limits, whitelist verification, and privacy modes."
+icon: "shield-halved"
+---
+
+**Program ID:** `2uYGW3fQUGfhrwVbkupdasXBpRPfGYBGTLUdaPTXU9vP`
+
+x0-guard is the protocol's policy enforcement layer. It implements the SPL **Transfer Hook** interface, meaning every Token-2022 transfer is intercepted and validated against the sender's `AgentPolicy` before the transfer can settle.
+
+## How It Works
+
+When a Token-2022 `TransferChecked` instruction executes on a mint configured with x0-guard as its transfer hook, Solana automatically invokes x0-guard's `validate_transfer` handler. The guard loads the agent's policy PDA and checks:
+
+1. **Policy is active** — `is_active` must be `true`
+2. **Amount within single-transaction limit** — If `max_single_transaction` is set, the amount must not exceed it
+3. **Rolling window budget** — The cumulative spend in the last 24 hours plus this amount must not exceed `daily_limit`
+4. **Whitelist membership** — If a whitelist is configured, the recipient must pass verification
+5. **Minimum transfer amount** — Amount must be ≥ 100 micro-units (anti-dust)
+
+If any check fails, the transfer is **rejected at the runtime level** — the entire transaction reverts.
+
+## Instructions
+
+### `initialize_policy`
+
+Creates a new `AgentPolicy` PDA for an owner-agent pair.
+
+```rust
+initialize_policy(
+    daily_limit: u64,
+    whitelist_mode: WhitelistMode,
+    whitelist_data: Option<Vec<u8>>,
+    privacy_level: PrivacyLevel
+)
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `daily_limit` | `u64` | Maximum spend in a 24-hour rolling window (micro-units) |
+| `whitelist_mode` | `WhitelistMode` | `None`, `Merkle`, `Bloom`, or `Domain` |
+| `whitelist_data` | `Option<Vec<u8>>` | Merkle root (32 bytes), Bloom filter (4096 bytes), or domain prefixes |
+| `privacy_level` | `PrivacyLevel` | `Public` or `Confidential { auditor: Option<Pubkey> }` |
+
+### `update_policy`
+
+Updates an existing policy. Rate-limited to one update per ~5 minutes (`POLICY_UPDATE_COOLDOWN_SLOTS = 750`).
+
+```rust
+update_policy(
+    new_daily_limit: Option<u64>,
+    new_whitelist_mode: Option<WhitelistMode>,
+    new_whitelist_data: Option<Vec<u8>>,
+    new_privacy_level: Option<PrivacyLevel>,
+    new_auditor_key: Option<Pubkey>,
+    new_max_single_transaction: Option<u64>
+)
+```
+
+### `update_agent_signer`
+
+Rotates the agent's signing key. The old key is immediately invalidated.
+
+```rust
+update_agent_signer(new_agent_signer: Pubkey)
+```
+
+### `revoke_agent_authority`
+
+Emergency revocation — immediately invalidates the agent's key and sets `is_active = false`. Only the policy owner can call this.
+
+### `set_policy_active`
+
+Pauses or unpauses an agent policy without destroying it.
+
+```rust
+set_policy_active(is_active: bool)
+```
+
+### `validate_transfer`
+
+The Transfer Hook entry point. Called automatically by Token-2022 on every transfer. Not callable directly by users.
+
+```rust
+validate_transfer(amount: u64, merkle_proof: Option<Vec<[u8; 32]>>)
+```
+
+### `record_blink`
+
+Records a Blink (human-approval request) generation event. Rate-limited to `MAX_BLINKS_PER_HOUR = 3`.
+
+```rust
+record_blink(amount: u64, recipient: Pubkey, reason: String)
+```
+
+### `get_current_spend`
+
+View instruction — returns the current rolling window spend, remaining allowance, and oldest entry expiry.
+
+## State Accounts
+
+### AgentPolicy
+
+```rust
+pub struct AgentPolicy {
+    pub version: u8,
+    pub owner: Pubkey,              // Wallet that created the policy
+    pub agent_signer: Pubkey,       // Delegated agent hot-key
+    pub daily_limit: u64,           // Max 24h rolling window spend
+    pub max_single_transaction: Option<u64>,
+    pub rolling_window: Vec<SpendingEntry>,
+    pub privacy_level: PrivacyLevel,
+    pub whitelist_mode: WhitelistMode,
+    pub whitelist_data: Vec<u8>,
+    pub auditor_key: Option<Pubkey>,
+    pub blinks_this_hour: u8,
+    pub blink_hour_start: i64,
+    pub is_active: bool,
+    pub bump: u8,
+    pub require_delegation: bool,
+    pub bound_token_account: Option<Pubkey>,
+    pub last_update_slot: u64,      // Rate-limiting
+}
+```
+
+**PDA Seeds:** `["agent_policy", owner, agent_signer]`
+
+### SpendingEntry
+
+Each entry in the rolling window tracks one transfer:
+
+```rust
+pub struct SpendingEntry {
+    pub amount: u64,      // Transfer amount in micro-units
+    pub timestamp: i64,   // Unix timestamp of transfer
+}
+```
+
+## Rolling Window Algorithm
+
+The spend limit uses a **sliding 24-hour window** rather than a fixed daily reset:
+
+1. On each transfer, expired entries (older than `ROLLING_WINDOW_SECONDS = 86,400`) are pruned
+2. The sum of remaining entries is computed as `current_spend`
+3. If `current_spend + amount > daily_limit`, the transfer is rejected
+4. On success, a new `SpendingEntry` is appended
+5. Maximum entries capped at `MAX_ROLLING_WINDOW_ENTRIES = 144` (~one per 10 minutes)
+
+This prevents the "midnight boundary" attack where an agent spends the daily limit at 23:59 and again at 00:01.
+
+## Whitelist Modes
+
+<Tabs>
+  <Tab title="None">
+    No whitelist — the agent can transfer to any recipient.
+  </Tab>
+  <Tab title="Merkle">
+    A Merkle root (32 bytes) is stored on-chain. Each transfer must include a Merkle proof (up to 14 levels deep) proving the recipient's address is a leaf in the tree. Supports up to **10,000 addresses**.
+    
+    ```typescript
+    const root = buildMerkleRoot(allowedAddresses);
+    const proof = generateMerkleProof(allowedAddresses, recipientIndex);
+    ```
+  </Tab>
+  <Tab title="Bloom">
+    A Bloom filter (4,096 bytes, 7 hash functions) is stored on-chain. Provides probabilistic membership testing with ~1% false positive rate for ~1,000 items. No false negatives.
+    
+    ```typescript
+    const filter = createBloomFilter(allowedAddresses);
+    // On-chain: checkBloomFilter(filter, recipient)
+    ```
+  </Tab>
+  <Tab title="Domain">
+    Up to 100 domain prefixes (8 bytes each) are stored. The recipient's address bytes are checked against these prefixes. Useful for restricting transfers to addresses within a known program's PDA space.
+  </Tab>
+</Tabs>
+
+## Privacy Levels
+
+| Level | Behavior |
+|---|---|
+| `Public` | Standard Token-2022 transfer. Amount and parties are visible on-chain. |
+| `Confidential` | Uses Token-2022 ConfidentialTransfer extension. Amounts are encrypted with Twisted ElGamal. Optional `auditor` pubkey can decrypt for compliance. |
+
+## Events Emitted
+
+| Event | When |
+|---|---|
+| `PolicyCreated` | New policy initialized |
+| `PolicyUpdated` | Policy parameters changed |
+| `AgentRevoked` | Agent authority revoked |
+| `TransferValidated` | Transfer passed policy check |
+| `TransferRejected` | Transfer failed policy check |
+| `BlinkGenerated` | Blink approval request recorded |
+| `WhitelistUpdated` | Whitelist data changed |
