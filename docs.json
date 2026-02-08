@@ -139,7 +139,7 @@
         },
         {
           "anchor": "Whitepaper",
-          "href": "/whitepaper.pdf",
+          "href": "https://raw.githubusercontent.com/0xTnxl/x0/main/whitepaper.pdf",
           "icon": "file-lines"
         }
       ]
